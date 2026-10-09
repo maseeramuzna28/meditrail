@@ -6,16 +6,13 @@ import {
   FileText, 
   Clock, 
   Sparkles, 
-  Activity, 
   CheckCircle2, 
   ArrowRight,
   ShieldCheck,
-  EyeOff,
-  UserCheck,
   Stethoscope
 } from 'lucide-react';
 
-export default function LandingPage({ setActivePage, onDemoLogin }) {
+export default function LandingPage({ setActivePage, isLoggedIn }) {
   return (
     <div className="space-y-20 pb-16">
       
@@ -44,19 +41,31 @@ export default function LandingPage({ setActivePage, onDemoLogin }) {
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-4 pt-2">
-                <button
-                  onClick={onDemoLogin}
-                  className="px-6 py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors flex items-center justify-center space-x-2"
-                >
-                  <span>Enter Patient Vault (Interactive Demo)</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setActivePage('signup')}
-                  className="px-6 py-3.5 bg-white hover:bg-slate-50 text-slate-800 font-semibold text-sm rounded-xl border border-slate-300 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <span>Create Free Account</span>
-                </button>
+                {isLoggedIn ? (
+                  <button
+                    onClick={() => setActivePage('dashboard')}
+                    className="px-6 py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <span>Go to My Vault Dashboard</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setActivePage('signup')}
+                      className="px-6 py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors flex items-center justify-center space-x-2"
+                    >
+                      <span>Create Account & Start Vault</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setActivePage('login')}
+                      className="px-6 py-3.5 bg-white hover:bg-slate-50 text-slate-800 font-semibold text-sm rounded-xl border border-slate-300 transition-colors flex items-center justify-center space-x-2"
+                    >
+                      <span>Sign In to Existing Account</span>
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Trust Callouts */}
@@ -113,11 +122,11 @@ export default function LandingPage({ setActivePage, onDemoLogin }) {
                     Shared 2 specific records with <strong className="text-white">Dr. Ahmed Khan</strong>
                   </div>
                   <button
-                    onClick={onDemoLogin}
+                    onClick={() => setActivePage('login')}
                     className="w-full py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center space-x-1"
                   >
                     <Stethoscope className="w-3.5 h-3.5" />
-                    <span>View Doctor Portal Simulation</span>
+                    <span>Sign In to Manage Shares</span>
                   </button>
                 </div>
 
@@ -214,10 +223,10 @@ export default function LandingPage({ setActivePage, onDemoLogin }) {
 
           <div className="lg:col-span-4 flex justify-center">
             <button
-              onClick={onDemoLogin}
+              onClick={() => setActivePage('signup')}
               className="w-full sm:w-auto px-8 py-4 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-all text-center"
             >
-              Launch Interactive Demo
+              Get Started Now
             </button>
           </div>
 

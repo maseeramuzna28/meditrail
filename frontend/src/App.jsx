@@ -22,10 +22,12 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsConditionsPage from './pages/TermsConditionsPage';
 
 import { mockStore } from './services/mockStore';
+import { supabase } from './services/supabaseClient';
 
 export default function App() {
-  const [user, setUser] = useState(() => mockStore.getUser());
-  const [activePage, setActivePage] = useState(() => user.isLoggedIn ? 'dashboard' : 'landing');
+  const [user, setUser] = useState({ isLoggedIn: false, name: 'Guest', email: '' });
+  // Always land on Landing Page first as requested by user!
+  const [activePage, setActivePage] = useState('landing');
   
   // Data States
   const [records, setRecords] = useState(() => mockStore.getRecords());
@@ -42,7 +44,37 @@ export default function App() {
   const [activeShareData, setActiveShareData] = useState(null);
   const [preSelectedShareRecordId, setPreSelectedShareRecordId] = useState(null);
 
-  // Sync state helpers
+  // Sync session with Supabase Auth
+  useEffect(() => {
+    // Check initial auth session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+          isLoggedIn: true
+        });
+      }
+    });
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+          isLoggedIn: true
+        });
+      } else {
+        setUser({ isLoggedIn: false, name: 'Guest', email: '' });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const refreshData = () => {
     setRecords(mockStore.getRecords());
     setShares(mockStore.getShares());
@@ -50,20 +82,13 @@ export default function App() {
     setAiSummary(mockStore.getAISummary());
   };
 
-  const handleLogin = (email) => {
-    const loggedUser = mockStore.login(email);
-    setUser(loggedUser);
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
     setActivePage('dashboard');
   };
 
-  const handleDemoLogin = () => {
-    const loggedUser = mockStore.login('alex.mercer@meditrail.org');
-    setUser(loggedUser);
-    setActivePage('dashboard');
-  };
-
-  const handleLogout = () => {
-    mockStore.logout();
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUser({ isLoggedIn: false, name: 'Guest', email: '' });
     setActivePage('landing');
   };
@@ -119,22 +144,20 @@ export default function App() {
         {activePage === 'landing' && (
           <LandingPage 
             setActivePage={setActivePage} 
-            onDemoLogin={handleDemoLogin} 
+            isLoggedIn={user.isLoggedIn} 
           />
         )}
 
         {activePage === 'login' && (
           <LoginPage
-            onLogin={handleLogin}
-            onDemoLogin={handleDemoLogin}
+            onLoginSuccess={handleLoginSuccess}
             setActivePage={setActivePage}
           />
         )}
 
         {activePage === 'signup' && (
           <SignupPage
-            onLogin={handleLogin}
-            onDemoLogin={handleDemoLogin}
+            onLoginSuccess={handleLoginSuccess}
             setActivePage={setActivePage}
           />
         )}
