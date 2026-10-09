@@ -1,117 +1,107 @@
 // API Integration Service Layer for MediTrail
-// Connects frontend to Node.js / Express / Supabase backend
+// Scoped per logged-in userId for strict multi-user privacy isolation
 
 import { mockStore } from './mockStore';
+import { supabase } from './supabaseClient';
 
-// Set to true to connect live Node.js / Express backend!
 const USE_REAL_BACKEND = true; 
-
-// Default local Express backend URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 export const apiService = {
-  // Records
-  getRecords: async () => {
-    if (!USE_REAL_BACKEND) return mockStore.getRecords();
+  // Medical Records (User Isolated)
+  getRecords: async (userId) => {
+    if (!userId) return [];
+    
+    // Try Supabase directly first for instant user isolation
     try {
-      const res = await fetch(`${API_BASE_URL}/records`);
-      if (!res.ok) throw new Error('Failed to fetch records');
-      return await res.json();
+      const { data, error } = await supabase
+        .from('medical_records')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false });
+
+      if (!error && data) return data;
     } catch (e) {
-      console.warn('Backend API offline, using fallback store:', e);
-      return mockStore.getRecords();
+      console.warn('Supabase fetch fallback:', e);
     }
+
+    // Try Express Backend
+    try {
+      const res = await fetch(`${API_BASE_URL}/records?userId=${userId}`);
+      if (res.ok) return await res.json();
+    } catch (e) {
+      // Fallback to per-user isolated storage
+    }
+
+    return mockStore.getRecords(userId);
   },
 
-  addRecord: async (recordData) => {
-    if (!USE_REAL_BACKEND) return mockStore.addRecord(recordData);
+  addRecord: async (userId, recordData) => {
+    if (!userId) return null;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/records`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recordData)
-      });
-      if (!res.ok) throw new Error('Failed to create record');
-      return await res.json();
+      const { data, error } = await supabase
+        .from('medical_records')
+        .insert([{
+          user_id: userId,
+          title: recordData.title,
+          category: recordData.category?.toLowerCase().replace(/\s+/g, '_') || 'other',
+          doctor_hospital: `${recordData.doctor} (${recordData.hospital})`,
+          date: recordData.date,
+          description: recordData.description,
+          file_name: recordData.fileName
+        }])
+        .select();
+
+      if (!error && data?.[0]) return data[0];
     } catch (e) {
-      return mockStore.addRecord(recordData);
+      console.warn('Supabase insert fallback:', e);
     }
+
+    return mockStore.addRecord(userId, recordData);
   },
 
-  deleteRecord: async (id) => {
-    if (!USE_REAL_BACKEND) return mockStore.deleteRecord(id);
+  deleteRecord: async (userId, recordId) => {
+    if (!userId) return false;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/records/${id}`, {
-        method: 'DELETE'
-      });
-      if (!res.ok) throw new Error('Failed to delete record');
-      return await res.json();
+      await supabase.from('medical_records').delete().eq('id', recordId).eq('user_id', userId);
     } catch (e) {
-      return mockStore.deleteRecord(id);
+      console.warn('Supabase delete fallback:', e);
     }
+
+    return mockStore.deleteRecord(userId, recordId);
   },
 
-  // Doctor Sharing
-  createShare: async (shareConfig) => {
-    if (!USE_REAL_BACKEND) return mockStore.createShare(shareConfig);
-    try {
-      const res = await fetch(`${API_BASE_URL}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(shareConfig)
-      });
-      if (!res.ok) throw new Error('Failed to create share link');
-      return await res.json();
-    } catch (e) {
-      return mockStore.createShare(shareConfig);
-    }
+  // Doctor Sharing (User Isolated)
+  getShares: async (userId) => {
+    if (!userId) return [];
+    return mockStore.getShares(userId);
+  },
+
+  createShare: async (userId, shareConfig) => {
+    if (!userId) return null;
+    return mockStore.createShare(userId, shareConfig);
   },
 
   getShareByToken: async (token) => {
-    if (!USE_REAL_BACKEND) return mockStore.getShareByToken(token);
-    try {
-      const res = await fetch(`${API_BASE_URL}/share/${token}`);
-      if (!res.ok) throw new Error('Share link expired or revoked');
-      return await res.json();
-    } catch (e) {
-      return mockStore.getShareByToken(token);
-    }
+    return mockStore.getShareByToken(token);
   },
 
-  revokeShare: async (shareId) => {
-    if (!USE_REAL_BACKEND) return mockStore.revokeShare(shareId);
-    try {
-      const res = await fetch(`${API_BASE_URL}/share/${shareId}/revoke`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to revoke access');
-      return await res.json();
-    } catch (e) {
-      return mockStore.revokeShare(shareId);
-    }
+  revokeShare: async (userId, shareId) => {
+    if (!userId) return false;
+    return mockStore.revokeShare(userId, shareId);
   },
 
   // AI Health Summary
-  getAISummary: async () => {
-    if (!USE_REAL_BACKEND) return mockStore.getAISummary();
-    try {
-      const res = await fetch(`${API_BASE_URL}/ai/summary`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to generate AI summary');
-      return await res.json();
-    } catch (e) {
-      return mockStore.getAISummary();
-    }
+  getAISummary: async (userId) => {
+    if (!userId) return mockStore.getAISummary(null);
+    return mockStore.getAISummary(userId);
   },
 
-  // Access Security Logs
-  getLogs: async () => {
-    if (!USE_REAL_BACKEND) return mockStore.getLogs();
-    try {
-      const res = await fetch(`${API_BASE_URL}/access-logs`);
-      if (!res.ok) throw new Error('Failed to fetch access logs');
-      return await res.json();
-    } catch (e) {
-      return mockStore.getLogs();
-    }
+  // Access Logs
+  getLogs: async (userId) => {
+    if (!userId) return [];
+    return mockStore.getLogs(userId);
   }
 };

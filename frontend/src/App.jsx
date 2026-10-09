@@ -22,19 +22,31 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsConditionsPage from './pages/TermsConditionsPage';
 
 import { mockStore } from './services/mockStore';
+import { apiService } from './services/apiService';
 import { supabase } from './services/supabaseClient';
 
+// List of pages that STRICTLY REQUIRE LOGIN
+const PROTECTED_PAGES = [
+  'dashboard',
+  'vault',
+  'timeline',
+  'ai-summary',
+  'share-records',
+  'active-shares',
+  'activity'
+];
+
 export default function App() {
-  const [user, setUser] = useState({ isLoggedIn: false, name: 'Guest', email: '' });
-  // Always land on Landing Page first as requested by user!
+  const [user, setUser] = useState({ isLoggedIn: false, name: 'Guest', email: '', id: null });
   const [activePage, setActivePage] = useState('landing');
+  const [authErrorAlert, setAuthErrorAlert] = useState('');
   
-  // Data States
-  const [records, setRecords] = useState(() => mockStore.getRecords());
-  const [shares, setShares] = useState(() => mockStore.getShares());
-  const [logs, setLogs] = useState(() => mockStore.getLogs());
-  const [aiSummary, setAiSummary] = useState(() => mockStore.getAISummary());
-  const [doctorToken, setDoctorToken] = useState('mt-dr-ahmed-8821');
+  // Per-User Data States
+  const [records, setRecords] = useState([]);
+  const [shares, setShares] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [aiSummary, setAiSummary] = useState({});
+  const [doctorToken, setDoctorToken] = useState('');
 
   // Modal States
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -44,77 +56,111 @@ export default function App() {
   const [activeShareData, setActiveShareData] = useState(null);
   const [preSelectedShareRecordId, setPreSelectedShareRecordId] = useState(null);
 
+  // Sync state helpers scoped to current user
+  const loadUserData = async (userId) => {
+    if (!userId) {
+      setRecords([]);
+      setShares([]);
+      setLogs([]);
+      setAiSummary({});
+      return;
+    }
+    const userRecs = await apiService.getRecords(userId);
+    const userShares = await apiService.getShares(userId);
+    const userLogs = await apiService.getLogs(userId);
+    const userSummary = await apiService.getAISummary(userId);
+
+    setRecords(userRecs);
+    setShares(userShares);
+    setLogs(userLogs);
+    setAiSummary(userSummary);
+  };
+
   // Sync session with Supabase Auth
   useEffect(() => {
-    // Check initial auth session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        setUser({
+        const currentUser = {
           id: session.user.id,
           email: session.user.email,
           name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
           isLoggedIn: true
-        });
+        };
+        setUser(currentUser);
+        loadUserData(currentUser.id);
       }
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        setUser({
+        const currentUser = {
           id: session.user.id,
           email: session.user.email,
           name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
           isLoggedIn: true
-        });
+        };
+        setUser(currentUser);
+        loadUserData(currentUser.id);
       } else {
-        setUser({ isLoggedIn: false, name: 'Guest', email: '' });
+        setUser({ isLoggedIn: false, name: 'Guest', email: '', id: null });
+        loadUserData(null);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const refreshData = () => {
-    setRecords(mockStore.getRecords());
-    setShares(mockStore.getShares());
-    setLogs(mockStore.getLogs());
-    setAiSummary(mockStore.getAISummary());
+  // Protected Route Navigation Guard
+  const navigateTo = (pageId) => {
+    if (PROTECTED_PAGES.includes(pageId) && !user.isLoggedIn) {
+      setAuthErrorAlert('Authentication required: Please sign in to access your personal medical vault.');
+      setActivePage('login');
+      return;
+    }
+    setAuthErrorAlert('');
+    setActivePage(pageId);
   };
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
+    loadUserData(userData.id);
+    setAuthErrorAlert('');
     setActivePage('dashboard');
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setUser({ isLoggedIn: false, name: 'Guest', email: '' });
+    setUser({ isLoggedIn: false, name: 'Guest', email: '', id: null });
+    loadUserData(null);
     setActivePage('landing');
   };
 
-  const handleAddRecord = (recordData) => {
-    mockStore.addRecord(recordData);
-    refreshData();
+  const handleAddRecord = async (recordData) => {
+    if (!user.id) return;
+    await apiService.addRecord(user.id, recordData);
+    loadUserData(user.id);
   };
 
-  const handleDeleteRecord = (id) => {
+  const handleDeleteRecord = async (id) => {
+    if (!user.id) return;
     if (window.confirm('Are you sure you want to delete this record from your vault?')) {
-      mockStore.deleteRecord(id);
-      refreshData();
+      await apiService.deleteRecord(user.id, id);
+      loadUserData(user.id);
     }
   };
 
-  const handleCreateShare = (shareConfig) => {
-    const newShare = mockStore.createShare(shareConfig);
+  const handleCreateShare = async (shareConfig) => {
+    if (!user.id) return;
+    const newShare = await apiService.createShare(user.id, shareConfig);
     setActiveShareData(newShare);
     setIsQRCodeModalOpen(true);
-    refreshData();
+    loadUserData(user.id);
   };
 
-  const handleRevokeShare = (shareId) => {
-    mockStore.revokeShare(shareId);
-    refreshData();
+  const handleRevokeShare = async (shareId) => {
+    if (!user.id) return;
+    await apiService.revokeShare(user.id, shareId);
+    loadUserData(user.id);
   };
 
   const handleOpenDoctorPortal = (token) => {
@@ -123,6 +169,10 @@ export default function App() {
   };
 
   const handleOpenShareWithRecord = (recordId) => {
+    if (!user.isLoggedIn) {
+      navigateTo('login');
+      return;
+    }
     setPreSelectedShareRecordId(recordId);
     setIsShareModalOpen(true);
   };
@@ -133,7 +183,7 @@ export default function App() {
       {/* Global Navigation */}
       <Navbar
         activePage={activePage}
-        setActivePage={setActivePage}
+        setActivePage={navigateTo}
         user={user}
         onLogout={handleLogout}
         activeShareCount={shares.filter(s => s.status === 'active').length}
@@ -141,9 +191,19 @@ export default function App() {
 
       {/* Main Content View Switcher */}
       <main className="flex-1">
+        
+        {/* Auth Error Notification Banner */}
+        {authErrorAlert && activePage === 'login' && (
+          <div className="max-w-md mx-auto mt-6 px-4">
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3.5 rounded-xl text-xs font-semibold flex items-center space-x-2">
+              <span>🔒 {authErrorAlert}</span>
+            </div>
+          </div>
+        )}
+
         {activePage === 'landing' && (
           <LandingPage 
-            setActivePage={setActivePage} 
+            setActivePage={navigateTo} 
             isLoggedIn={user.isLoggedIn} 
           />
         )}
@@ -151,24 +211,25 @@ export default function App() {
         {activePage === 'login' && (
           <LoginPage
             onLoginSuccess={handleLoginSuccess}
-            setActivePage={setActivePage}
+            setActivePage={navigateTo}
           />
         )}
 
         {activePage === 'signup' && (
           <SignupPage
             onLoginSuccess={handleLoginSuccess}
-            setActivePage={setActivePage}
+            setActivePage={navigateTo}
           />
         )}
 
-        {activePage === 'dashboard' && (
+        {/* PROTECTED ROUTES */}
+        {user.isLoggedIn && activePage === 'dashboard' && (
           <DashboardPage
             records={records}
             shares={shares}
             logs={logs}
             user={user}
-            setActivePage={setActivePage}
+            setActivePage={navigateTo}
             onOpenUpload={() => setIsUploadOpen(true)}
             onOpenShare={(id) => handleOpenShareWithRecord(id)}
             onViewRecord={(rec) => setViewingRecord(rec)}
@@ -176,7 +237,7 @@ export default function App() {
           />
         )}
 
-        {activePage === 'vault' && (
+        {user.isLoggedIn && activePage === 'vault' && (
           <VaultPage
             records={records}
             onViewRecord={(rec) => setViewingRecord(rec)}
@@ -186,7 +247,7 @@ export default function App() {
           />
         )}
 
-        {activePage === 'timeline' && (
+        {user.isLoggedIn && activePage === 'timeline' && (
           <TimelinePage
             records={records}
             onViewRecord={(rec) => setViewingRecord(rec)}
@@ -194,22 +255,22 @@ export default function App() {
           />
         )}
 
-        {activePage === 'ai-summary' && (
+        {user.isLoggedIn && activePage === 'ai-summary' && (
           <AISummaryPage
             aiSummaryData={aiSummary}
-            onRegenerate={refreshData}
+            onRegenerate={() => loadUserData(user.id)}
           />
         )}
 
-        {activePage === 'share-records' && (
+        {user.isLoggedIn && activePage === 'share-records' && (
           <ShareRecordsPage
             onOpenShareModal={() => setIsShareModalOpen(true)}
-            setActivePage={setActivePage}
+            setActivePage={navigateTo}
             activeShares={shares.filter(s => s.status === 'active')}
           />
         )}
 
-        {activePage === 'active-shares' && (
+        {user.isLoggedIn && activePage === 'active-shares' && (
           <ActiveSharesPage
             shares={shares}
             onRevokeShare={handleRevokeShare}
@@ -217,16 +278,17 @@ export default function App() {
           />
         )}
 
-        {activePage === 'activity' && (
+        {user.isLoggedIn && activePage === 'activity' && (
           <ActivityHistoryPage logs={logs} />
         )}
 
+        {/* Public Doctor Token Portal View */}
         {activePage === 'doctor-demo' && (
           <DoctorViewPage
             token={doctorToken}
-            getShareByToken={mockStore.getShareByToken}
+            getShareByToken={apiService.getShareByToken}
             allRecords={records}
-            onBackToPatientPortal={() => setActivePage('dashboard')}
+            onBackToPatientPortal={() => navigateTo('landing')}
           />
         )}
 
@@ -239,37 +301,41 @@ export default function App() {
         )}
       </main>
 
-      {/* Global Modals */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
-        onUploadSuccess={handleAddRecord}
-      />
+      {/* Global Modals (Only active when logged in) */}
+      {user.isLoggedIn && (
+        <>
+          <UploadModal
+            isOpen={isUploadOpen}
+            onClose={() => setIsUploadOpen(false)}
+            onUploadSuccess={handleAddRecord}
+          />
 
-      <DocumentViewerModal
-        record={viewingRecord}
-        isOpen={!!viewingRecord}
-        onClose={() => setViewingRecord(null)}
-        onShareRecord={(rec) => handleOpenShareWithRecord(rec.id)}
-      />
+          <DocumentViewerModal
+            record={viewingRecord}
+            isOpen={!!viewingRecord}
+            onClose={() => setViewingRecord(null)}
+            onShareRecord={(rec) => handleOpenShareWithRecord(rec.id)}
+          />
 
-      <ShareModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-        records={records}
-        preSelectedRecordId={preSelectedShareRecordId}
-        onCreateShare={handleCreateShare}
-      />
+          <ShareModal
+            isOpen={isShareModalOpen}
+            onClose={() => setIsShareModalOpen(false)}
+            records={records}
+            preSelectedRecordId={preSelectedShareRecordId}
+            onCreateShare={handleCreateShare}
+          />
 
-      <QRCodeModal
-        shareData={activeShareData}
-        isOpen={isQRCodeModalOpen}
-        onClose={() => setIsQRCodeModalOpen(false)}
-        onOpenDoctorPortal={handleOpenDoctorPortal}
-      />
+          <QRCodeModal
+            shareData={activeShareData}
+            isOpen={isQRCodeModalOpen}
+            onClose={() => setIsQRCodeModalOpen(false)}
+            onOpenDoctorPortal={handleOpenDoctorPortal}
+          />
+        </>
+      )}
 
       {/* Global Footer */}
-      <Footer setActivePage={setActivePage} />
+      <Footer setActivePage={navigateTo} />
 
     </div>
   );
