@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, User, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { supabase } from '../services/supabaseClient';
+import { Shield, Lock, Mail, User, AlertCircle, Loader2 } from 'lucide-react';
+import { authService } from '../services/authService';
 
 export default function SignupPage({ onLoginSuccess, setActivePage }) {
   const [name, setName] = useState('');
@@ -8,7 +8,6 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -16,36 +15,14 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
 
     setLoading(true);
     setErrorMsg('');
-    setSuccessMsg('');
 
-    try {
-      // Real Supabase User Registration
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name }
-        }
-      });
+    const { user, error } = await authService.signup(email, password, name);
+    setLoading(false);
 
-      if (error) {
-        setErrorMsg(error.message);
-      } else if (data?.user) {
-        if (data.session) {
-          onLoginSuccess({
-            id: data.user.id,
-            email: data.user.email,
-            name,
-            isLoggedIn: true
-          });
-        } else {
-          setSuccessMsg('Account created! Please check your email to confirm registration or sign in.');
-        }
-      }
-    } catch (err) {
-      setErrorMsg('Failed to complete registration.');
-    } finally {
-      setLoading(false);
+    if (error) {
+      setErrorMsg(error);
+    } else if (user) {
+      onLoginSuccess(user);
     }
   };
 
@@ -62,7 +39,7 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
           <p className="text-xs text-slate-500">Register to own & manage your digital medical history</p>
         </div>
 
-        {/* Alerts */}
+        {/* Error Alert */}
         {errorMsg && (
           <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-center space-x-2 text-xs text-rose-800">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -70,14 +47,7 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
           </div>
         )}
 
-        {successMsg && (
-          <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center space-x-2 text-xs text-emerald-800">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Real Signup Form */}
+        {/* Signup Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
@@ -135,7 +105,7 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
                 <span>Creating Account...</span>
               </>
             ) : (
-              <span>Register Account</span>
+              <span>Register Account & Open Vault</span>
             )}
           </button>
         </form>

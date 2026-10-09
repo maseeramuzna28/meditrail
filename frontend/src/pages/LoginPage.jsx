@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
-import { supabase } from '../services/supabaseClient';
+import { authService } from '../services/authService';
 
 export default function LoginPage({ onLoginSuccess, setActivePage }) {
   const [email, setEmail] = useState('');
@@ -15,27 +15,13 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
     setLoading(true);
     setErrorMsg('');
 
-    try {
-      // Real Supabase Authentication
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { user, error } = await authService.login(email, password);
+    setLoading(false);
 
-      if (error) {
-        setErrorMsg(error.message);
-      } else if (data?.user) {
-        onLoginSuccess({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.user_metadata?.full_name || email.split('@')[0],
-          isLoggedIn: true
-        });
-      }
-    } catch (err) {
-      setErrorMsg('Failed to connect to authentication server.');
-    } finally {
-      setLoading(false);
+    if (error) {
+      setErrorMsg(error);
+    } else if (user) {
+      onLoginSuccess(user);
     }
   };
 
@@ -60,7 +46,7 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
           </div>
         )}
 
-        {/* Real Auth Form */}
+        {/* Auth Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
@@ -100,7 +86,7 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Authenticating...</span>
+                <span>Signing In...</span>
               </>
             ) : (
               <span>Sign In to Vault</span>
