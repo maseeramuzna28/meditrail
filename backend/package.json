@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "db:migrate": "ts-node-dev --transpile-only src/dbMigrate.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",

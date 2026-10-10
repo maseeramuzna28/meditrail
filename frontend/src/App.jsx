@@ -137,8 +137,11 @@ export default function App() {
 
   const handleAddRecord = async (recordData) => {
     if (!user.id) return;
-    await apiService.addRecord(user.id, recordData);
-    loadUserData(user.id);
+    const added = await apiService.addRecord(user.id, recordData);
+    if (added) {
+      setRecords(prev => [added, ...prev.filter(r => r.id !== added.id)]);
+    }
+    await loadUserData(user.id);
   };
 
   const handleDeleteRecord = async (id) => {

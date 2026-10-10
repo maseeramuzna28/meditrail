@@ -2,16 +2,10 @@ import React, { useState } from 'react';
 import { 
   FileText, 
   Search, 
-  Filter, 
   Plus, 
   Share2, 
   CheckSquare, 
-  Square,
-  Upload,
-  Pill,
-  TestTube,
-  Activity,
-  Award
+  Square
 } from 'lucide-react';
 import RecordCard from '../components/RecordCard';
 
@@ -35,14 +29,16 @@ export default function VaultPage({
   const [activeCategory, setActiveCategory] = useState('All Records');
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // Filter records
-  const filteredRecords = records.filter(record => {
+  // Robust null-safe filter
+  const filteredRecords = (records || []).filter(record => {
+    if (!record) return false;
     const matchesCategory = activeCategory === 'All Records' || record.category === activeCategory;
-    const matchesSearch = 
-      record.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.doctor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = (searchQuery || '').toLowerCase().trim();
+    const matchesSearch = !q ||
+      (record.title || '').toLowerCase().includes(q) ||
+      (record.doctor || '').toLowerCase().includes(q) ||
+      (record.hospital || '').toLowerCase().includes(q) ||
+      (record.description || '').toLowerCase().includes(q);
     return matchesCategory && matchesSearch;
   });
 

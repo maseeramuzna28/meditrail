@@ -1,0 +1,23 @@
+{
+  "name": "meditrail-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MediTrail HealthTech Platform Monorepo",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "db:migrate": "npm --prefix backend run db:migrate"
+  },
+  "keywords": [
+    "healthtech",
+    "meditrail",
+    "medical-records",
+    "supabase",
+    "react",
+    "express"
+  ],
+  "author": "MediTrail Team"
+}
