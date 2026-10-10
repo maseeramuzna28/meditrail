@@ -64,6 +64,11 @@ Patients usually have medical documents scattered across different hospitals, cl
 * **Data & API Layer:** Dual-mode service architecture (`localStorage`-backed mock store + REST API client)
 
 ---
+## 🎬 Project Demo
+
+Watch the MediTrail demonstration video:
+
+[▶️ Watch MediTrail Demo](https://drive.google.com/file/d/1lB8moa1twYaZH9zcOi7DfoFuWY-nQ0X0/view?usp=sharing))
 
 ## ⚙️ Quick Start & Local Setup
 
