@@ -1,194 +1,115 @@
-const express = require('express');
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const QRCode = require('qrcode');
+const QRCode   = require('qrcode');
 const { supabaseAdmin } = require('../config/supabase');
 const { authenticate } = require('../middleware/auth');
 
-/**
- * POST /api/share
- * Create a new doctor sharing link
- * Patient selects which records to share and sets an expiry time
- */
+const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+// POST /api/share — create a share link
 router.post('/', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { record_ids, expires_in_hours, doctor_name } = req.body;
+    const { record_ids, expires_in_hours = 24, doctor_name = '' } = req.body;
 
-    if (!record_ids || !Array.isArray(record_ids) || record_ids.length === 0) {
-      return res.status(400).json({ error: 'Please select at least one record to share' });
+    if (!Array.isArray(record_ids) || record_ids.length === 0) {
+      return res.status(400).json({ error: 'Select at least one record to share' });
     }
 
-    if (!expires_in_hours || expires_in_hours < 1) {
-      return res.status(400).json({ error: 'Please set a valid expiry time (minimum 1 hour)' });
-    }
+    const token     = uuidv4();
+    const expiresAt = new Date(Date.now() + expires_in_hours * 3600 * 1000).toISOString();
 
-    // Verify that all selected records belong to this user
-    const { data: records, error: recordsError } = await supabaseAdmin
-      .from('medical_records')
-      .select('id')
-      .eq('user_id', userId)
-      .in('id', record_ids);
-
-    if (recordsError) throw recordsError;
-
-    if (records.length !== record_ids.length) {
-      return res.status(403).json({ error: 'Some records do not belong to you' });
-    }
-
-    // Generate unique token for the share link
-    const token = uuidv4();
-    const expiresAt = new Date(Date.now() + expires_in_hours * 60 * 60 * 1000);
-
-    // Save the share link to database
-    const { data: shareLink, error: shareError } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('share_links')
       .insert([{
         token,
-        user_id: userId,
+        user_id:    req.user.id,
         record_ids,
-        doctor_name: doctor_name || null,
+        doctor_name,
         expires_at: expiresAt,
-        is_active: true
+        is_active:  true,
       }])
       .select()
       .single();
 
-    if (shareError) throw shareError;
+    if (error) throw error;
 
-    // Log activity: link created
+    // Log activity
     await supabaseAdmin.from('access_logs').insert([{
-      share_link_id: shareLink.id,
-      user_id: userId,
-      action: 'link_created',
-      details: `Shared ${record_ids.length} record(s)${doctor_name ? ` with ${doctor_name}` : ''}`
-    }]);
+      share_link_id: data.id,
+      user_id:       req.user.id,
+      action:        'link_created',
+      details:       `Shared ${record_ids.length} record(s) with ${doctor_name || 'a doctor'}`,
+    }]).catch(() => {});
 
-    // Generate the shareable URL
-    const shareUrl = `${process.env.FRONTEND_URL}/doctor-view/${token}`;
-
-    // Generate QR code as base64 image
-    const qrCodeDataUrl = await QRCode.toDataURL(shareUrl, {
-      width: 256,
-      margin: 2,
-      color: { dark: '#1a1a2e', light: '#ffffff' }
-    });
+    const shareUrl = `${FRONTEND}?token=${token}`;
+    const qrCode   = await QRCode.toDataURL(shareUrl, { width: 256, margin: 2 });
 
     res.status(201).json({
-      message: 'Share link created successfully',
-      share_link: {
-        id: shareLink.id,
+      message: 'Share link created',
+      share: {
+        id:          data.id,
         token,
-        url: shareUrl,
-        qr_code: qrCodeDataUrl,
-        expires_at: expiresAt,
+        url:         shareUrl,
+        qr_code:     qrCode,
+        expires_at:  expiresAt,
+        doctor_name,
         record_count: record_ids.length,
-        doctor_name: doctor_name || null
-      }
+      },
     });
-
   } catch (err) {
-    console.error('Create share link error:', err);
+    console.error('POST /share error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * GET /api/share
- * Get all share links created by the logged-in patient
- */
+// GET /api/share — get all share links for logged-in user
 router.get('/', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-
     const { data, error } = await supabaseAdmin
       .from('share_links')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Add computed fields
-    const links = data.map(link => ({
-      ...link,
-      url: `${process.env.FRONTEND_URL}/doctor-view/${link.token}`,
-      is_expired: new Date(link.expires_at) < new Date()
+    const shares = (data || []).map(s => ({
+      ...s,
+      url:        `${FRONTEND}?token=${s.token}`,
+      is_expired: new Date(s.expires_at) < new Date(),
     }));
 
-    res.json({ share_links: links });
+    res.json({ shares });
   } catch (err) {
-    console.error('Get share links error:', err);
+    console.error('GET /share error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * DELETE /api/share/:id/revoke
- * Revoke (deactivate) a share link — patient can revoke at any time
- */
+// DELETE /api/share/:id/revoke — revoke a share link
 router.delete('/:id/revoke', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { id } = req.params;
-
     const { data, error } = await supabaseAdmin
       .from('share_links')
       .update({ is_active: false })
-      .eq('id', id)
-      .eq('user_id', userId)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
       .select()
       .single();
 
-    if (error || !data) {
-      return res.status(404).json({ error: 'Share link not found or not authorized' });
-    }
+    if (error || !data) return res.status(404).json({ error: 'Share link not found' });
 
-    // Log activity: link revoked
     await supabaseAdmin.from('access_logs').insert([{
-      share_link_id: id,
-      user_id: userId,
-      action: 'link_revoked',
-      details: 'Access revoked by patient'
-    }]);
+      share_link_id: req.params.id,
+      user_id:       req.user.id,
+      action:        'link_revoked',
+      details:       'Access revoked by patient',
+    }]).catch(() => {});
 
-    res.json({ message: 'Share link revoked successfully' });
+    res.json({ message: 'Share link revoked' });
   } catch (err) {
-    console.error('Revoke share link error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * GET /api/share/:id/qr
- * Regenerate QR code for an existing share link
- */
-router.get('/:id/qr', authenticate, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { id } = req.params;
-
-    const { data, error } = await supabaseAdmin
-      .from('share_links')
-      .select('token, is_active, expires_at')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error || !data) {
-      return res.status(404).json({ error: 'Share link not found' });
-    }
-
-    const shareUrl = `${process.env.FRONTEND_URL}/doctor-view/${data.token}`;
-    const qrCodeDataUrl = await QRCode.toDataURL(shareUrl, {
-      width: 256,
-      margin: 2,
-      color: { dark: '#1a1a2e', light: '#ffffff' }
-    });
-
-    res.json({ qr_code: qrCodeDataUrl, url: shareUrl });
-  } catch (err) {
-    console.error('QR code error:', err);
+    console.error('DELETE /share/:id/revoke error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

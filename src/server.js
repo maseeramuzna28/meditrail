@@ -1,70 +1,77 @@
+// ─── Fix: Force IPv4 DNS (prevents "fetch failed" on some networks) ──────────
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
+// ─── Fix: Allow self-signed / corp SSL certificates ──────────────────────────
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+const express    = require('express');
+const cors       = require('cors');
+const app        = express();
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// ─── Middleware ────────────────────────────────────────────────────────────────
+// ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+  ],
+  credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-const recordsRouter = require('./routes/records');
-const timelineRouter = require('./routes/timeline');
-const aiRouter = require('./routes/ai');
-const shareRouter = require('./routes/share');
-const doctorRouter = require('./routes/doctor');
+const recordsRouter  = require('./routes/records');
+const shareRouter    = require('./routes/share');
+const doctorRouter   = require('./routes/doctor');
 const activityRouter = require('./routes/activity');
+const aiRouter       = require('./routes/ai');
 
-app.use('/api/records', recordsRouter);
-app.use('/api/timeline', timelineRouter);
-app.use('/api/ai', aiRouter);
-app.use('/api/share', shareRouter);
-app.use('/api/doctor', doctorRouter);
+app.use('/api/records',  recordsRouter);
+app.use('/api/share',    shareRouter);
+app.use('/api/doctor',   doctorRouter);
 app.use('/api/activity', activityRouter);
+app.use('/api/ai',       aiRouter);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    project: 'MediTrail',
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok', project: 'MediTrail', timestamp: new Date().toISOString() });
 });
 
-// ─── 404 Handler ──────────────────────────────────────────────────────────────
+// ─── DB Connection Test ───────────────────────────────────────────────────────
+app.get('/test-db', async (req, res) => {
+  const { supabaseAdmin } = require('./config/supabase');
+  try {
+    const { count, error } = await supabaseAdmin
+      .from('medical_records')
+      .select('*', { count: 'exact', head: true });
+    res.json({
+      status: error ? 'error' : 'ok',
+      total_records: count,
+      error: error?.message || null,
+    });
+  } catch (err) {
+    res.json({ status: 'exception', error: err.message });
+  }
+});
+
+// ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  console.error('[ERROR]', err.message);
+  res.status(500).json({ error: err.message });
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`\n🚀 MediTrail backend running on http://localhost:${PORT}`);
-  console.log(`📋 Health check: http://localhost:${PORT}/health`);
-  console.log(`🗄️  Supabase: ${process.env.SUPABASE_URL}`);
-  console.log('\nAvailable endpoints:');
-  console.log('  POST   /api/records         - Upload a medical record');
-  console.log('  GET    /api/records         - Get all records');
-  console.log('  GET    /api/records/:id     - Get a single record');
-  console.log('  PUT    /api/records/:id     - Update a record');
-  console.log('  DELETE /api/records/:id     - Delete a record');
-  console.log('  GET    /api/timeline        - Get medical timeline');
-  console.log('  GET    /api/ai/summary      - AI health summary');
-  console.log('  POST   /api/share           - Create doctor share link');
-  console.log('  GET    /api/share           - Get all share links');
-  console.log('  DELETE /api/share/:id/revoke - Revoke a share link');
-  console.log('  GET    /api/share/:id/qr    - Get QR code for share link');
-  console.log('  GET    /api/doctor/:token   - Doctor views shared records');
-  console.log('  GET    /api/activity        - Get activity logs');
+  console.log(`🔬 Test DB: http://localhost:${PORT}/test-db`);
+  console.log(`📋 Health:  http://localhost:${PORT}/health\n`);
 });

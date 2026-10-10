@@ -1,150 +1,99 @@
-const express = require('express');
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const { supabaseAdmin } = require('../config/supabase');
 const { authenticate } = require('../middleware/auth');
 
-/**
- * POST /api/records
- * Upload a new medical record (metadata only, file uploaded directly to Supabase Storage by frontend)
- */
-router.post('/', authenticate, async (req, res) => {
-  try {
-    const { title, category, doctor_hospital, date, description, file_url, file_name } = req.body;
-    const userId = req.user.id;
-
-    if (!title || !category || !date) {
-      return res.status(400).json({ error: 'Title, category, and date are required' });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('medical_records')
-      .insert([{
-        user_id: userId,
-        title,
-        category,
-        doctor_hospital,
-        date,
-        description,
-        file_url,
-        file_name
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    res.status(201).json({ message: 'Record created successfully', record: data });
-  } catch (err) {
-    console.error('Create record error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * GET /api/records
- * Get all records for the logged-in patient (with optional category filter)
- */
+// GET /api/records — get all records for the logged-in user
 router.get('/', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
     const { category } = req.query;
 
     let query = supabaseAdmin
       .from('medical_records')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', req.user.id)
       .order('date', { ascending: false });
 
-    if (category && category !== 'all') {
+    if (category && category !== 'All Records') {
       query = query.eq('category', category);
     }
 
     const { data, error } = await query;
     if (error) throw error;
 
-    res.json({ records: data });
+    res.json({ records: data || [] });
   } catch (err) {
-    console.error('Get records error:', err);
+    console.error('GET /records error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * GET /api/records/:id
- * Get a single record by ID (only if it belongs to the logged-in user)
- */
-router.get('/:id', authenticate, async (req, res) => {
+// POST /api/records — create a new record
+router.post('/', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { id } = req.params;
+    const { title, category, doctor, hospital, date, description, file_url, file_name } = req.body;
 
-    const { data, error } = await supabaseAdmin
-      .from('medical_records')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error || !data) {
-      return res.status(404).json({ error: 'Record not found' });
+    if (!title || !date) {
+      return res.status(400).json({ error: 'Title and date are required' });
     }
 
-    res.json({ record: data });
-  } catch (err) {
-    console.error('Get record error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * PUT /api/records/:id
- * Update a record (only if it belongs to the logged-in user)
- */
-router.put('/:id', authenticate, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { id } = req.params;
-    const { title, category, doctor_hospital, date, description, file_url, file_name } = req.body;
-
     const { data, error } = await supabaseAdmin
       .from('medical_records')
-      .update({ title, category, doctor_hospital, date, description, file_url, file_name, updated_at: new Date() })
-      .eq('id', id)
-      .eq('user_id', userId)
+      .insert([{
+        user_id:     req.user.id,
+        title,
+        category:    category || 'other',
+        doctor:      doctor || '',
+        hospital:    hospital || '',
+        date,
+        description: description || '',
+        file_url:    file_url || null,
+        file_name:   file_name || null,
+      }])
       .select()
       .single();
 
-    if (error || !data) {
-      return res.status(404).json({ error: 'Record not found or not authorized' });
-    }
+    if (error) throw error;
 
-    res.json({ message: 'Record updated', record: data });
+    res.status(201).json({ message: 'Record created', record: data });
   } catch (err) {
-    console.error('Update record error:', err);
+    console.error('POST /records error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * DELETE /api/records/:id
- * Delete a record (only if it belongs to the logged-in user)
- */
+// GET /api/records/:id — get a single record
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('medical_records')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: 'Record not found' });
+
+    res.json({ record: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/records/:id — delete a record
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { id } = req.params;
-
     const { error } = await supabaseAdmin
       .from('medical_records')
       .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
 
     if (error) throw error;
 
-    res.json({ message: 'Record deleted successfully' });
+    res.json({ message: 'Record deleted' });
   } catch (err) {
-    console.error('Delete record error:', err);
+    console.error('DELETE /records error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

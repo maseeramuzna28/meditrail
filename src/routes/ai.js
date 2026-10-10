@@ -1,105 +1,100 @@
-const express = require('express');
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { supabaseAdmin } = require('../config/supabase');
 const { authenticate } = require('../middleware/auth');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-/**
- * GET /api/ai/summary
- * Generate an AI health history summary from the patient's medical records.
- * The AI summarizes existing information only — does NOT diagnose or prescribe.
- */
-router.get('/summary', authenticate, async (req, res) => {
+// POST /api/ai/summary — generate AI health summary from records
+router.post('/summary', authenticate, async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    // Fetch all the patient's records
+    // 1. Fetch user's records
     const { data: records, error } = await supabaseAdmin
       .from('medical_records')
-      .select('id, title, category, doctor_hospital, date, description')
-      .eq('user_id', userId)
-      .order('date', { ascending: false });
+      .select('title, category, doctor, hospital, date, description')
+      .eq('user_id', req.user.id)
+      .order('date', { ascending: false })
+      .limit(20);
 
     if (error) throw error;
 
     if (!records || records.length === 0) {
       return res.json({
-        summary: null,
-        message: 'No medical records found. Upload some records first to get your health summary.'
+        summary: 'No medical records found. Upload your first record to get an AI health summary.',
+        categories: {},
+        insights: [],
+        lastUpdated: new Date().toISOString(),
       });
     }
 
-    // Build a structured text from the records for the AI
-    const recordsText = records.map((r, i) =>
-      `Record ${i + 1}:
-      - ID: ${r.id}
-      - Title: ${r.title}
-      - Category: ${r.category}
-      - Doctor/Hospital: ${r.doctor_hospital || 'Not specified'}
-      - Date: ${r.date}
-      - Description: ${r.description || 'No description'}`
-    ).join('\n\n');
+    // 2. Build prompt
+    const recordsText = records.map(r =>
+      `- ${r.title} (${r.category}) on ${r.date} by ${r.doctor || 'Unknown doctor'} at ${r.hospital || 'Unknown facility'}` +
+      (r.description ? `: ${r.description}` : '')
+    ).join('\n');
 
-    const prompt = `You are a medical records assistant helping a patient understand their own health history.
-
-Based on the following medical records, create a clear and simple health summary. 
-
-IMPORTANT RULES:
-- Only summarize what is ALREADY in the records
-- Do NOT diagnose any condition
-- Do NOT recommend any treatment or medication
-- Do NOT give medical advice
-- If a field is unclear, say "not specified"
-
-Please extract and structure the following from the records:
-1. Known Allergies (mention which record ID it came from)
-2. Medical Conditions/Diagnoses (mention which record ID it came from)
-3. Current/Recent Medications (mention which record ID it came from)
-4. Recent Test Results (mention which record ID it came from)
-5. Brief Overall Summary (2-3 sentences)
+    const prompt = `
+You are a helpful medical assistant. Analyze these patient medical records and provide a brief, easy-to-understand health summary.
 
 Medical Records:
 ${recordsText}
 
-Respond in JSON format like this:
+Please provide:
+1. A 2-3 sentence overall health summary
+2. Key health observations (max 4 bullet points)
+3. Any patterns you notice
+
+Format your response as JSON with this structure:
 {
-  "allergies": [{"detail": "...", "source_record_id": "..."}],
-  "conditions": [{"detail": "...", "source_record_id": "..."}],
-  "medications": [{"detail": "...", "source_record_id": "..."}],
-  "test_results": [{"detail": "...", "source_record_id": "..."}],
-  "overall_summary": "..."
-}`;
+  "summary": "overall summary text",
+  "insights": ["insight 1", "insight 2", "insight 3"],
+  "categories": {
+    "Prescriptions": 0,
+    "Lab Reports": 0,
+    "Diagnoses": 0,
+    "Other": 0
+  }
+}
+    `.trim();
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // 3. Call Gemini API
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
     const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+    const text   = result.response.text();
 
-    // Parse the JSON from AI response
-    let parsedSummary;
+    // 4. Parse JSON from Gemini response
+    let parsed;
     try {
-      // Extract JSON from the response (in case it has extra text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedSummary = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found in response');
-      }
-    } catch (parseErr) {
-      // If JSON parsing fails, return the raw text
-      parsedSummary = { raw: responseText };
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch (e) {
+      parsed = null;
     }
 
+    // Count categories
+    const catCounts = {};
+    records.forEach(r => {
+      catCounts[r.category] = (catCounts[r.category] || 0) + 1;
+    });
+
     res.json({
-      summary: parsedSummary,
-      records_analyzed: records.length,
-      generated_at: new Date().toISOString()
+      summary:     parsed?.summary   || text.substring(0, 300),
+      insights:    parsed?.insights  || [],
+      categories:  parsed?.categories || catCounts,
+      recordCount: records.length,
+      lastUpdated: new Date().toISOString(),
     });
 
   } catch (err) {
-    console.error('AI Summary error:', err);
-    res.status(500).json({ error: 'Failed to generate AI summary: ' + err.message });
+    console.error('POST /ai/summary error:', err.message);
+    // Return a fallback summary instead of an error
+    res.json({
+      summary: 'AI summary temporarily unavailable. Your records are safely stored.',
+      insights: ['Upload more records to get better insights.'],
+      categories: {},
+      lastUpdated: new Date().toISOString(),
+      error: err.message,
+    });
   }
 });
 

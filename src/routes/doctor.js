@@ -1,83 +1,57 @@
-const express = require('express');
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const { supabaseAdmin } = require('../config/supabase');
 
-/**
- * GET /api/doctor/:token
- * Public route - Doctor accesses shared records using a token.
- * No authentication required (doctor may not have an account).
- * Only returns records selected by the patient.
- */
+// GET /api/doctor/:token — public endpoint, doctor views shared records
 router.get('/:token', async (req, res) => {
   try {
     const { token } = req.params;
-    const doctorIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-    // Look up the share link
-    const { data: shareLink, error: linkError } = await supabaseAdmin
+    // Find the share link
+    const { data: shareLink, error: linkErr } = await supabaseAdmin
       .from('share_links')
       .select('*')
       .eq('token', token)
+      .eq('is_active', true)
       .single();
 
-    if (linkError || !shareLink) {
-      return res.status(404).json({ error: 'Invalid or expired share link' });
+    if (linkErr || !shareLink) {
+      return res.status(404).json({ error: 'Share link not found or has been revoked' });
     }
 
-    // Check if the link has been revoked
-    if (!shareLink.is_active) {
-      return res.status(403).json({ error: 'This link has been revoked by the patient' });
-    }
-
-    // Check if the link has expired
+    // Check expiry
     if (new Date(shareLink.expires_at) < new Date()) {
-      // Mark the link as expired in the database
-      await supabaseAdmin
-        .from('share_links')
-        .update({ is_active: false })
-        .eq('id', shareLink.id);
-
-      // Log expiry
-      await supabaseAdmin.from('access_logs').insert([{
-        share_link_id: shareLink.id,
-        user_id: shareLink.user_id,
-        action: 'link_expired',
-        details: 'Link expired on access attempt',
-        accessed_by_ip: doctorIp
-      }]);
-
-      return res.status(403).json({ error: 'This share link has expired' });
+      return res.status(410).json({ error: 'Share link has expired' });
     }
 
-    // Fetch ONLY the records that were selected by the patient
-    const { data: records, error: recordsError } = await supabaseAdmin
+    // Get the shared records
+    const { data: records, error: recErr } = await supabaseAdmin
       .from('medical_records')
-      .select('id, title, category, doctor_hospital, date, description, file_url, file_name')
-      .in('id', shareLink.record_ids)
-      .order('date', { ascending: false });
+      .select('*')
+      .in('id', shareLink.record_ids);
 
-    if (recordsError) throw recordsError;
+    if (recErr) throw recErr;
 
-    // Log activity: link accessed by doctor
+    // Log access
     await supabaseAdmin.from('access_logs').insert([{
       share_link_id: shareLink.id,
-      user_id: shareLink.user_id,
-      action: 'link_accessed',
-      details: `Doctor viewed ${records.length} shared record(s)`,
-      accessed_by_ip: doctorIp
-    }]);
+      user_id:       shareLink.user_id,
+      action:        'link_accessed',
+      details:       `Doctor view accessed`,
+      accessed_by_ip: req.ip,
+    }]).catch(() => {});
 
     res.json({
-      records,
-      share_info: {
-        expires_at: shareLink.expires_at,
+      share: {
+        token,
         doctor_name: shareLink.doctor_name,
-        shared_at: shareLink.created_at
-      }
+        expires_at:  shareLink.expires_at,
+        created_at:  shareLink.created_at,
+      },
+      records: records || [],
     });
-
   } catch (err) {
-    console.error('Doctor view error:', err);
+    console.error('GET /doctor/:token error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
