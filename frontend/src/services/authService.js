@@ -38,12 +38,57 @@ const createLocalUser = (account) => ({
   isLocal: true,
 });
 
+const isNetworkError = (error) =>
+  error instanceof TypeError ||
+  error?.name === 'AuthRetryableFetchError' ||
+  error?.status === 0;
+
 export const authService = {
   signup: async (name, email, password) => {
     const normalizedEmail = email.trim().toLowerCase();
     const accounts = getLocalAccounts();
     if (accounts[normalizedEmail]) {
       return { user: null, error: 'An account with this email already exists in this browser.' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: { data: { full_name: name.trim() } },
+      });
+
+      if (error) {
+        if (/already been registered|already exists/i.test(error.message)) {
+          return { user: null, error: 'An account with this email already exists. Please sign in instead.' };
+        }
+        if (!isNetworkError(error)) {
+          return { user: null, error: error.message };
+        }
+        console.warn('Cloud signup unavailable; creating a browser-only account:', error.message);
+      } else if (data.user && data.session) {
+        return {
+          user: {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.full_name || name.trim(),
+            isLoggedIn: true,
+            isLocal: false,
+          },
+          error: null,
+        };
+      } else if (data.user) {
+        return {
+          user: null,
+          error: 'Account created. Check your email to confirm it, then sign in.',
+        };
+      }
+    } catch (error) {
+      if (!isNetworkError(error)) {
+        console.error('Cloud signup failed:', error);
+        return { user: null, error: error?.message || 'Registration failed.' };
+      }
+      console.warn('Cloud signup unavailable; creating a browser-only account:', error.message);
     }
 
     const salt = crypto.randomUUID();
