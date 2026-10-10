@@ -136,12 +136,16 @@ export default function App() {
   };
 
   const handleAddRecord = async (recordData) => {
-    if (!user.id) return;
+    if (!user.id) {
+      throw new Error('Please sign in to upload records to your vault.');
+    }
     const added = await apiService.addRecord(user.id, recordData);
     if (added) {
       setRecords(prev => [added, ...prev.filter(r => r.id !== added.id)]);
+      await loadUserData(user.id);
+      return added;
     }
-    await loadUserData(user.id);
+    throw new Error('Could not verify record save in database.');
   };
 
   const handleDeleteRecord = async (id) => {

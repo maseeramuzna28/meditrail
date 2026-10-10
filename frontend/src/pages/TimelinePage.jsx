@@ -6,121 +6,178 @@ import {
   Activity, 
   FileText, 
   Award, 
-  Calendar, 
   Building2, 
   User, 
   Eye, 
-  Share2 
+  Share2, 
+  Calendar,
+  ArrowDown,
+  CheckCircle2
 } from 'lucide-react';
 
 const CATEGORY_ICONS = {
-  'Prescriptions': { icon: Pill, color: 'bg-emerald-500 text-white' },
-  'Lab Reports': { icon: TestTube, color: 'bg-teal-600 text-white' },
-  'Diagnoses': { icon: Activity, color: 'bg-amber-500 text-white' },
-  'Discharge Summaries': { icon: FileText, color: 'bg-blue-600 text-white' },
-  'Medical Certificates': { icon: Award, color: 'bg-indigo-600 text-white' },
-  'Other Medical Documents': { icon: FileText, color: 'bg-slate-600 text-white' }
+  'Prescriptions': { 
+    icon: Pill, 
+    color: 'bg-indigo-600 text-white', 
+    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+  },
+  'Lab Reports': { 
+    icon: TestTube, 
+    color: 'bg-teal-600 text-white', 
+    badge: 'bg-teal-50 text-teal-700 border-teal-200' 
+  },
+  'Diagnoses': { 
+    icon: Activity, 
+    color: 'bg-amber-600 text-white', 
+    badge: 'bg-amber-50 text-amber-700 border-amber-200' 
+  },
+  'Discharge Summaries': { 
+    icon: FileText, 
+    color: 'bg-blue-600 text-white', 
+    badge: 'bg-blue-50 text-blue-700 border-blue-200' 
+  },
+  'Medical Certificates': { 
+    icon: Award, 
+    color: 'bg-slate-700 text-white', 
+    badge: 'bg-slate-50 text-slate-700 border-slate-200' 
+  },
+  'Other Medical Documents': { 
+    icon: FileText, 
+    color: 'bg-slate-700 text-white', 
+    badge: 'bg-slate-50 text-slate-700 border-slate-200' 
+  }
 };
 
-export default function TimelinePage({ records = [], onViewRecord, onShareRecord }) {
-  // Sort records chronologically descending
-  const sortedRecords = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
+export default function TimelinePage({ records = [], onViewRecord, onOpenShareModal }) {
+  // Sort records chronologically (newest first)
+  const sortedRecords = [...records].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  const formatTimelineDate = (dateStr) => {
+    if (!dateStr) return 'Recent';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
       {/* Header */}
       <div className="border-b border-slate-200 pb-5">
-        <div className="flex items-center space-x-2 text-teal-700 mb-1">
-          <Clock className="w-5 h-5" />
-          <span className="text-xs font-semibold uppercase tracking-wider">Chronological Health Log</span>
+        <div className="inline-flex items-center gap-1.5 text-teal-700 text-xs font-bold uppercase tracking-wider mb-1">
+          <Clock className="w-4 h-4 text-teal-600" />
+          <span>Chronological Health Journey</span>
         </div>
-        <h1 className="text-2xl font-bold text-slate-900">Medical History Timeline</h1>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Medical Timeline</h1>
         <p className="text-xs text-slate-500">
-          A clear, continuous timeline of your diagnostic tests, prescriptions, and clinical visits
+          A seamless chronological trail connecting all your clinical visits, test reports, and prescriptions
         </p>
       </div>
 
-      {/* Vertical Timeline */}
-      <div className="relative border-l-2 border-slate-200 ml-4 sm:ml-6 space-y-8 pl-6 sm:pl-8 py-2">
-        {sortedRecords.map((record, index) => {
-          const catConfig = CATEGORY_ICONS[record.category] || CATEGORY_ICONS['Other Medical Documents'];
-          const Icon = catConfig.icon;
+      {sortedRecords.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+          <Clock className="w-12 h-12 text-slate-300 mx-auto" />
+          <h3 className="text-base font-bold text-slate-800">Timeline Empty</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Upload medical records to visualize your complete health timeline in chronological sequence.
+          </p>
+        </div>
+      ) : (
+        <div className="relative pl-6 sm:pl-8 space-y-8">
+          
+          {/* Continuous Vertical Spine */}
+          <div className="absolute left-3.5 sm:left-4.5 top-3 bottom-3 w-0.5 bg-slate-200" />
 
-          return (
-            <div key={record.id} className="relative group">
-              
-              {/* Timeline Node Icon Badge */}
-              <div className={`absolute -left-[35px] sm:-left-[43px] top-1.5 w-8 h-8 rounded-xl ${catConfig.color} flex items-center justify-center shadow-sm ring-4 ring-slate-50`}>
-                <Icon className="w-4 h-4 stroke-[2.2]" />
-              </div>
+          {sortedRecords.map((record, index) => {
+            const catInfo = CATEGORY_ICONS[record.category] || CATEGORY_ICONS['Other Medical Documents'];
+            const Icon = catInfo.icon;
 
-              {/* Card Container */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3 transition-all hover:border-teal-500">
+            return (
+              <div key={record.id} className="relative group">
                 
-                {/* Date & Category Badge */}
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-2 text-slate-500 font-semibold font-mono">
-                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
-                    <span>{record.date}</span>
+                {/* Node Dot on Timeline */}
+                <div className={`absolute -left-6 sm:-left-8 top-1.5 w-7 h-7 rounded-full ${catInfo.color} flex items-center justify-center ring-4 ring-white shadow-xs z-10 transition-transform group-hover:scale-110`}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
+
+                {/* Timeline Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all ml-4 sm:ml-6 space-y-3">
+                  
+                  {/* Top Bar: Date + Category Badge */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 flex items-center gap-1.5">
+                      <Calendar className="w-3 h-3 text-slate-500" />
+                      {formatTimelineDate(record.date)}
+                    </span>
+
+                    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${catInfo.badge}`}>
+                      {record.category}
+                    </span>
                   </div>
-                  <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-md font-semibold text-[11px]">
-                    {record.category}
-                  </span>
-                </div>
 
-                {/* Record Title */}
-                <h3 
-                  onClick={() => onViewRecord(record)}
-                  className="text-base font-bold text-slate-900 hover:text-teal-700 cursor-pointer"
-                >
-                  {record.title}
-                </h3>
+                  {/* Title */}
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                    {record.title}
+                  </h3>
 
-                {/* Doctor & Facility */}
-                <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-                  <span className="flex items-center space-x-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-medium text-slate-700">{record.doctor}</span>
-                  </span>
-                  <span className="flex items-center space-x-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{record.hospital}</span>
-                  </span>
-                </div>
+                  {/* Facility & Doctor Meta */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                    {record.doctor && (
+                      <span className="flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="font-semibold text-slate-700">{record.doctor}</span>
+                      </span>
+                    )}
+                    {record.hospital && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{record.hospital}</span>
+                      </span>
+                    )}
+                  </div>
 
-                {/* Clinical Summary Note */}
-                <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  {record.description}
-                </p>
+                  {/* Clinical Description / Summary */}
+                  {record.description && (
+                    <div className="p-3 bg-slate-50/80 rounded-lg border border-slate-100 text-xs text-slate-600 leading-relaxed">
+                      {record.description}
+                    </div>
+                  )}
 
-                {/* Timeline Card Footer Actions */}
-                <div className="pt-2 flex items-center justify-between border-t border-slate-100 text-xs">
-                  <span className="text-slate-400 font-mono text-[11px]">{record.fileName || 'PDF Document'}</span>
-                  <div className="flex items-center space-x-2">
+                  {/* Card Actions */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                     <button
-                      onClick={() => onViewRecord(record)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors flex items-center space-x-1"
+                      onClick={() => onViewRecord && onViewRecord(record)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 transition-colors"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>View Record</span>
+                      <span>View Full Document</span>
                     </button>
+
                     <button
-                      onClick={() => onShareRecord(record)}
-                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 font-semibold rounded-lg border border-teal-200 transition-colors flex items-center space-x-1"
+                      onClick={() => onOpenShareModal && onOpenShareModal([record.id])}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-sky-600 transition-colors"
                     >
                       <Share2 className="w-3.5 h-3.5" />
                       <span>Share Record</span>
                     </button>
                   </div>
+
                 </div>
 
+                {/* Sub-node connector arrow */}
+                {index < sortedRecords.length - 1 && (
+                  <div className="text-slate-300 ml-4 pl-1 pt-1">
+                    <ArrowDown className="w-3.5 h-3.5 opacity-60" />
+                  </div>
+                )}
               </div>
-
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
     </div>
   );

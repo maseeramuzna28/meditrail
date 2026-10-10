@@ -8,237 +8,253 @@ import {
   User, 
   Calendar, 
   Building2, 
-  CheckCircle2, 
   Eye, 
-  AlertOctagon,
-  ArrowLeft,
-  Stethoscope
+  AlertTriangle,
+  Stethoscope,
+  HeartPulse,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
+import { apiService } from '../services/apiService';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 
-export default function DoctorViewPage({ token, getShareByToken, allRecords = [], onBackToPatientPortal }) {
-  const [share, setShare] = useState(null);
-  const [selectedDoc, setSelectedDoc] = useState(null);
-  const [timeLeft, setTimeLeft] = useState('');
+export default function DoctorViewPage({ token, onBackToApp }) {
+  const [shareData, setShareData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [viewingRecord, setViewingRecord] = useState(null);
+  const [remainingTime, setRemainingTime] = useState('');
 
   useEffect(() => {
-    if (token) {
-      const shareData = getShareByToken(token);
-      setShare(shareData);
-    }
-  }, [token, getShareByToken]);
-
-  // Update countdown timer
-  useEffect(() => {
-    if (!share || share.status !== 'active') return;
-
-    const interval = setInterval(() => {
-      const diff = new Date(share.expiresAt) - new Date();
-      if (diff <= 0) {
-        setShare(prev => ({ ...prev, status: 'expired' }));
-        setTimeLeft('Expired');
-        clearInterval(interval);
-      } else {
-        const hours = Math.floor(diff / (1000 * 3600));
-        const mins = Math.floor((diff % (1000 * 3600)) / (1000 * 60));
-        const secs = Math.floor((diff % (1000 * 60)) / 1000);
-        setTimeLeft(`${hours}h ${mins}m ${secs}s`);
+    async function loadSharedRecords() {
+      setLoading(true);
+      try {
+        const data = await apiService.getSharedRecordsByToken(token);
+        setShareData(data);
+      } catch (err) {
+        console.error('Failed to load shared records:', err);
+      } finally {
+        setLoading(false);
       }
-    }, 1000);
+    }
+    loadSharedRecords();
+  }, [token]);
 
+  // Live countdown timer for the doctor's session
+  useEffect(() => {
+    if (!shareData?.expiresAt) return;
+
+    const updateTimer = () => {
+      const diff = new Date(shareData.expiresAt) - new Date();
+      if (diff <= 0) {
+        setRemainingTime('Expired');
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 3600));
+      const mins = Math.floor((diff % (1000 * 3600)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+      setRemainingTime(`${hours}h ${mins}m ${secs}s`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [share]);
+  }, [shareData?.expiresAt]);
 
-  if (!share) {
+  if (loading) {
     return (
-      <div className="max-w-2xl mx-auto py-16 px-4 text-center space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mx-auto">
-          <AlertOctagon className="w-6 h-6" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center mx-auto animate-pulse">
+            <HeartPulse className="w-6 h-6" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-800">Verifying Temporary Medical Authorization...</h3>
+          <p className="text-xs text-slate-400 font-mono">Token: {token || 'Validating...'}</p>
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Invalid Share Link Token</h2>
-        <p className="text-xs text-slate-500">The share link token standard format was not recognized or has expired.</p>
-        <button
-          onClick={onBackToPatientPortal}
-          className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg"
-        >
-          Return to Patient Vault Portal
-        </button>
       </div>
     );
   }
 
-  // Handle Revoked or Expired States
-  if (share.status === 'revoked' || share.status === 'expired') {
+  // ACCESS REVOKED STATE
+  if (shareData?.status === 'revoked') {
     return (
-      <div className="max-w-2xl mx-auto py-16 px-4">
-        <div className="bg-white border border-rose-200 rounded-3xl p-8 shadow-xl text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto font-bold">
-            <Ban className="w-8 h-8 stroke-[2.2]" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-rose-200 rounded-2xl p-8 shadow-md text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+            <Ban className="w-7 h-7" />
           </div>
-
-          <div className="space-y-2">
-            <span className="px-3 py-1 bg-rose-100 text-rose-800 text-xs font-extrabold rounded-md uppercase tracking-wider">
-              {share.status === 'revoked' ? 'Access Revoked' : 'Share Expired'}
-            </span>
-            <h2 className="text-2xl font-extrabold text-slate-900">Medical Record Access Unavailable</h2>
-            <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-              {share.status === 'revoked' 
-                ? `Access to these medical records was explicitly revoked by the patient (${share.doctorName}).`
-                : 'The time-bound temporary share duration has expired.'
-              }
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900">Access Revoked by Patient</h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              The patient has manually revoked access to these medical records. Under MediTrail's patient consent policy, this link is permanently terminated.
             </p>
           </div>
-
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-500 max-w-sm mx-auto space-y-1">
-            <p className="font-semibold text-slate-700">Patient Security Guarantee</p>
-            <p>MediTrail ensures patients maintain 100% data sovereignty. Once revoked, no further access is permitted.</p>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] font-mono text-slate-500">
+            Token Status: REVOKED · Timestamp: {new Date().toLocaleTimeString()}
           </div>
-
-          <div className="pt-2">
+          {onBackToApp && (
             <button
-              onClick={onBackToPatientPortal}
-              className="px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors inline-flex items-center space-x-2"
+              onClick={onBackToApp}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Patient Vault</span>
+              Return to Patient Portal
             </button>
-          </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // Active Share View
-  const sharedRecords = allRecords.filter(r => share.recordIds.includes(r.id));
+  // ACCESS EXPIRED STATE
+  if (shareData?.status === 'expired' || remainingTime === 'Expired') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-amber-200 rounded-2xl p-8 shadow-md text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+            <Clock className="w-7 h-7" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900">Medical Share Link Expired</h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              This temporary access link has passed its designated expiry window. Please request the patient to generate a new secure link.
+            </p>
+          </div>
+          {onBackToApp && (
+            <button
+              onClick={onBackToApp}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors"
+            >
+              Return to Patient Portal
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const records = shareData?.records || [];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      
-      {/* Top Banner Header */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto space-y-6">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-500 text-slate-950 flex items-center justify-center font-bold">
+        {/* Doctor Header Bar */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-teal-700 text-white flex items-center justify-center shadow-xs">
               <Stethoscope className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-teal-400 uppercase tracking-wider">MediTrail Doctor Portal</span>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-white">Clinical Patient Record Share</h1>
-            </div>
-          </div>
-
-          <button
-            onClick={onBackToPatientPortal}
-            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition-colors flex items-center space-x-1.5 w-fit"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Patient Vault View</span>
-          </button>
-        </div>
-
-        {/* Security & Expiry Metadata Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          
-          <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 space-y-1">
-            <span className="text-slate-400 flex items-center space-x-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-              <span>Authorization Status</span>
-            </span>
-            <p className="text-white font-bold">Securely Shared by Patient</p>
-          </div>
-
-          <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 space-y-1">
-            <span className="text-slate-400 flex items-center space-x-1">
-              <User className="w-3.5 h-3.5 text-teal-400" />
-              <span>Assigned Consulting Physician</span>
-            </span>
-            <p className="text-white font-bold">{share.doctorName} ({share.specialty || 'Cardiology'})</p>
-          </div>
-
-          <div className="bg-amber-900/40 p-3.5 rounded-xl border border-amber-700/60 space-y-1">
-            <span className="text-amber-300 flex items-center space-x-1 font-semibold">
-              <Clock className="w-3.5 h-3.5 text-amber-400" />
-              <span>Time-Bound Countdown</span>
-            </span>
-            <p className="text-amber-200 font-mono font-bold text-sm">
-              ⏱ Access expires in: {timeLeft || getRemainingTime(share.expiresAt)}
-            </p>
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Shared Records List Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">
-            Patient-Selected Medical Records ({sharedRecords.length})
-          </h2>
-          <span className="text-xs text-slate-500">Only authorized documents are visible below</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {sharedRecords.map(record => (
-            <div key={record.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-md text-xs font-semibold">
-                  {record.category}
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-slate-900">Patient Medical Records</h1>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                  Doctor Review Portal
                 </span>
-                <span className="text-xs font-mono text-slate-400">{record.date}</span>
               </div>
-
-              <h3 className="text-base font-bold text-slate-900">{record.title}</h3>
-
-              <div className="space-y-1 text-xs text-slate-500">
-                <p><strong className="text-slate-700">Practitioner:</strong> {record.doctor}</p>
-                <p><strong className="text-slate-700">Facility:</strong> {record.hospital}</p>
-              </div>
-
-              <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {record.description}
+              <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Authorized Physician: <strong>{shareData?.doctorName || 'Consulting Physician'}</strong> ({shareData?.specialty || 'Clinical Review'})</span>
               </p>
-
-              <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                <span className="text-xs font-mono text-teal-600 flex items-center space-x-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Encrypted Patient Record</span>
-                </span>
-
-                <button
-                  onClick={() => setSelectedDoc(record)}
-                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1.5"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Inspect Document</span>
-                </button>
-              </div>
-
             </div>
-          ))}
+          </div>
+
+          {onBackToApp && (
+            <button
+              onClick={onBackToApp}
+              className="text-xs text-slate-600 hover:text-slate-900 font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 self-start sm:self-auto"
+            >
+              ← Back to App
+            </button>
+          )}
         </div>
+
+        {/* Security & Expiry Pill Banner (Strictly per prompt specification) */}
+        <div className="bg-gradient-to-r from-teal-50 via-sky-50 to-emerald-50 border border-teal-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-teal-900 font-semibold">
+            <ShieldCheck className="w-4 h-4 text-teal-700 shrink-0" />
+            <span>🔐 Securely shared by patient · Scoped clinical authorization</span>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono font-bold text-amber-800 bg-amber-100/70 border border-amber-200 px-3 py-1 rounded-md self-start sm:self-auto">
+            <Clock className="w-3.5 h-3.5 text-amber-700" />
+            <span>⏱ Access expires in: {remainingTime || '23h 42m'}</span>
+          </div>
+        </div>
+
+        {/* Notice of Scoped Access */}
+        <div className="text-xs text-slate-500 bg-white p-3.5 rounded-xl border border-slate-200 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            <span>You have access to <strong>{records.length}</strong> patient-selected record(s). Unshared patient history remains strictly confidential.</span>
+          </span>
+          <span className="font-mono text-[10px] text-slate-400">Token: {token}</span>
+        </div>
+
+        {/* Shared Records List */}
+        <div className="space-y-4">
+          <h2 className="text-sm font-bold font-mono uppercase tracking-wider text-slate-500">
+            Shared Records ({records.length})
+          </h2>
+
+          {records.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2">
+              <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="text-xs text-slate-500">No records attached to this share link.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {records.map(record => (
+                <div 
+                  key={record.id}
+                  className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                        {record.category}
+                      </span>
+                      <span className="font-mono text-xs text-slate-400 flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        {record.date}
+                      </span>
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-900">
+                      {record.title}
+                    </h3>
+
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                      {record.doctor && <span>Physician: <strong className="text-slate-700">{record.doctor}</strong></span>}
+                      {record.hospital && <span>Facility: <strong className="text-slate-700">{record.hospital}</strong></span>}
+                    </div>
+
+                    {record.description && (
+                      <p className="text-xs text-slate-600 pt-1 line-clamp-2">
+                        {record.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setViewingRecord(record)}
+                    className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Record</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* Document Viewer Modal */}
-      {selectedDoc && (
-        <DocumentViewerModal
-          record={selectedDoc}
-          isOpen={!!selectedDoc}
-          onClose={() => setSelectedDoc(null)}
-          onShareRecord={() => {}}
-        />
-      )}
-
+      <DocumentViewerModal
+        record={viewingRecord}
+        isOpen={!!viewingRecord}
+        onClose={() => setViewingRecord(null)}
+      />
     </div>
   );
-}
-
-function getRemainingTime(expiresAt) {
-  const diff = new Date(expiresAt) - new Date();
-  if (diff <= 0) return 'Expired';
-  const hours = Math.floor(diff / (1000 * 3600));
-  const mins = Math.floor((diff % (1000 * 3600)) / (1000 * 60));
-  return `${hours}h ${mins}m`;
 }

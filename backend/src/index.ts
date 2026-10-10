@@ -2,7 +2,25 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+
+function isUUID(str: any): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
+function normalizeCategory(raw: string): string {
+  if (!raw) return 'other';
+  const c = raw.toLowerCase().trim();
+  if (c.includes('prescription')) return 'prescription';
+  if (c.includes('lab')) return 'lab_report';
+  if (c.includes('diagnos')) return 'diagnosis';
+  if (c.includes('discharge')) return 'discharge_summary';
+  if (c.includes('imag') || c.includes('x-ray') || c.includes('mri')) return 'imaging';
+  if (c.includes('vaccin')) return 'vaccination';
+  return 'other';
+}
 
 dotenv.config();
 
@@ -189,9 +207,31 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 app.get('/api/records', async (req: Request, res: Response) => {
   const userId = req.query.userId as string;
   try {
-    if (supabase && userId) {
-      const { data, error } = await supabase.from('medical_records').select('*').eq('user_id', userId).order('date', { ascending: false });
-      if (!error && data) return res.json(data);
+    if (supabase && userId && isUUID(userId)) {
+      const { data, error } = await supabase
+        .from('medical_records')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false });
+
+      if (!error && data) {
+        const mapped = data.map((row: any) => ({
+          id: row.id,
+          userId: row.user_id,
+          title: row.title,
+          category: row.category,
+          doctor: row.doctor || '',
+          hospital: row.hospital || '',
+          date: row.date,
+          description: row.description || '',
+          fileName: row.file_name || 'Document.pdf',
+          fileUrl: row.file_url || '',
+          fileType: (row.file_name?.endsWith('.png') || row.file_name?.endsWith('.jpg') || row.file_name?.endsWith('.jpeg')) ? 'image' : 'pdf',
+          fileSize: '1.5 MB',
+          createdAt: row.created_at
+        }));
+        return res.json(mapped);
+      }
     }
     res.json(inMemoryRecords);
   } catch (err) {
@@ -202,30 +242,95 @@ app.get('/api/records', async (req: Request, res: Response) => {
 // API ROUTE: POST /api/records
 app.post('/api/records', async (req: Request, res: Response) => {
   try {
-    const { userId, title, category, doctor, hospital, date, description, fileName, fileSize } = req.body;
-    const newRecord = {
-      id: `rec-${Date.now().toString().slice(-4)}`,
-      user_id: userId || 'usr-default-1',
-      title: title || 'Medical Record',
-      category: category || 'Prescriptions',
-      doctor: doctor || 'Dr. Unspecified',
-      hospital: hospital || 'Health Center',
-      date: date || new Date().toISOString().split('T')[0],
-      description: description || '',
-      fileType: 'pdf',
-      fileName: fileName || 'Document.pdf',
-      fileSize: fileSize || '1.2 MB'
-    };
-
-    if (supabase && userId) {
-      await supabase.from('medical_records').insert([newRecord]);
-    } else {
-      inMemoryRecords.unshift(newRecord);
+    const { userId, title, category, doctor, hospital, date, description, fileName, fileUrl } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'Record title is required' });
     }
 
-    res.status(201).json(newRecord);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to save record' });
+    let validUserId = userId;
+    if (supabase) {
+      if (!validUserId || !isUUID(validUserId)) {
+        // Find existing user in auth
+        const { data: usersData } = await supabase.auth.admin.listUsers();
+        if (usersData?.users && usersData.users.length > 0) {
+          validUserId = usersData.users[0].id;
+        }
+      }
+    }
+
+    const normCat = normalizeCategory(category);
+    const docName = doctor || 'Dr. Unspecified';
+    const hospName = hospital || 'Health Center';
+    const recDate = date || new Date().toISOString().split('T')[0];
+    const recDesc = description || '';
+    const recFileName = fileName || `${(title || 'Document').replace(/\s+/g, '_')}.pdf`;
+    const recFileUrl = fileUrl || '';
+
+    let savedRecord: any = null;
+
+    if (supabase && validUserId && isUUID(validUserId)) {
+      const dbPayload = {
+        user_id: validUserId,
+        title: title || 'Medical Record',
+        category: normCat,
+        doctor: docName,
+        hospital: hospName,
+        date: recDate,
+        description: recDesc,
+        file_name: recFileName,
+        file_url: recFileUrl
+      };
+
+      const { data, error } = await supabase.from('medical_records').insert([dbPayload]).select();
+      if (error) {
+        console.error('Supabase insert error in medical_records:', error);
+        return res.status(500).json({ error: `Supabase database error: ${error.message}` });
+      }
+
+      if (data && data.length > 0) {
+        const row = data[0];
+        savedRecord = {
+          id: row.id,
+          userId: row.user_id,
+          title: row.title,
+          category: row.category,
+          doctor: row.doctor,
+          hospital: row.hospital,
+          date: row.date,
+          description: row.description,
+          fileName: row.file_name,
+          fileUrl: row.file_url,
+          fileType: (row.file_name?.endsWith('.png') || row.file_name?.endsWith('.jpg') || row.file_name?.endsWith('.jpeg')) ? 'image' : 'pdf',
+          fileSize: '1.5 MB',
+          createdAt: row.created_at
+        };
+      }
+    }
+
+    if (!savedRecord) {
+      // Local fallback
+      savedRecord = {
+        id: `rec-${Date.now().toString().slice(-4)}`,
+        userId: validUserId || 'usr-default-1',
+        title: title || 'Medical Record',
+        category: normCat,
+        doctor: docName,
+        hospital: hospName,
+        date: recDate,
+        description: recDesc,
+        fileName: recFileName,
+        fileUrl: recFileUrl,
+        fileType: 'pdf',
+        fileSize: '1.2 MB'
+      };
+      inMemoryRecords.unshift(savedRecord);
+    }
+
+    res.status(201).json(savedRecord);
+  } catch (err: any) {
+    console.error('POST /api/records error:', err);
+    res.status(500).json({ error: err.message || 'Failed to save record' });
   }
 });
 
@@ -233,13 +338,16 @@ app.post('/api/records', async (req: Request, res: Response) => {
 app.delete('/api/records/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    if (supabase) {
-      await supabase.from('medical_records').delete().eq('id', id);
+    if (supabase && isUUID(id)) {
+      const { error } = await supabase.from('medical_records').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase delete error:', error);
+      }
     }
     inMemoryRecords = inMemoryRecords.filter(r => r.id !== id);
     res.json({ success: true, message: 'Record deleted' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to delete record' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete record: ' + err.message });
   }
 });
 
@@ -247,32 +355,114 @@ app.delete('/api/records/:id', async (req: Request, res: Response) => {
 app.post('/api/share', async (req: Request, res: Response) => {
   try {
     const { userId, doctorName, specialty, durationHours, selectedRecordIds } = req.body;
-    const token = `mt-share-${Math.random().toString(36).substring(2, 8)}`;
+    let validUserId = userId;
+    if (supabase && (!validUserId || !isUUID(validUserId))) {
+      const { data: usersData } = await supabase.auth.admin.listUsers();
+      if (usersData?.users && usersData.users.length > 0) {
+        validUserId = usersData.users[0].id;
+      }
+    }
+
+    const token = crypto.randomUUID ? crypto.randomUUID() : 'a0000000-0000-4000-8000-' + Math.random().toString(16).slice(2, 14);
     const expiresAt = new Date(Date.now() + (durationHours || 24) * 3600 * 1000).toISOString();
+    const validRecordUuids = Array.isArray(selectedRecordIds) 
+      ? selectedRecordIds.filter((id: string) => isUUID(id)) 
+      : [];
 
-    const newShare = {
-      id: `share-${Date.now().toString().slice(-4)}`,
-      token,
-      userId: userId || 'usr-default-1',
-      doctorName: doctorName || 'Consulting Doctor',
-      specialty: specialty || 'General Medicine',
-      createdDate: new Date().toISOString(),
-      expiresAt,
-      recordIds: selectedRecordIds || [],
-      status: 'active',
-      accessCount: 0
-    };
+    let createdShare: any = null;
 
-    inMemoryShares.unshift(newShare);
-    res.status(201).json(newShare);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to create share token' });
+    if (supabase && validUserId && isUUID(validUserId)) {
+      const { data, error } = await supabase.from('share_links').insert([{
+        token,
+        user_id: validUserId,
+        record_ids: validRecordUuids,
+        doctor_name: doctorName || 'Consulting Doctor',
+        expires_at: expiresAt,
+        is_active: true
+      }]).select();
+
+      if (!error && data && data.length > 0) {
+        const row = data[0];
+        createdShare = {
+          id: row.id,
+          token: row.token,
+          userId: row.user_id,
+          doctorName: row.doctor_name,
+          specialty: specialty || 'General Medicine',
+          createdDate: row.created_at,
+          expiresAt: row.expires_at,
+          recordIds: row.record_ids,
+          status: row.is_active ? 'active' : 'revoked',
+          accessCount: 0
+        };
+
+        // Also record creation in access_logs
+        try {
+          await supabase.from('access_logs').insert([{
+            share_link_id: row.id,
+            user_id: validUserId,
+            action: 'link_created',
+            details: `Share link generated for ${doctorName || 'Doctor'} (${durationHours || 24}h validity)`
+          }]);
+        } catch (logErr) {
+          console.warn('Failed to insert access_log:', logErr);
+        }
+      }
+    }
+
+    if (!createdShare) {
+      createdShare = {
+        id: `share-${Date.now().toString().slice(-4)}`,
+        token,
+        userId: validUserId || 'usr-default-1',
+        doctorName: doctorName || 'Consulting Doctor',
+        specialty: specialty || 'General Medicine',
+        createdDate: new Date().toISOString(),
+        expiresAt,
+        recordIds: selectedRecordIds || [],
+        status: 'active',
+        accessCount: 0
+      };
+      inMemoryShares.unshift(createdShare);
+    }
+
+    res.status(201).json(createdShare);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to create share token: ' + err.message });
   }
 });
 
 // API ROUTE: GET /api/share/:token
 app.get('/api/share/:token', async (req: Request, res: Response) => {
   const { token } = req.params;
+  try {
+    if (supabase && isUUID(token)) {
+      const { data, error } = await supabase.from('share_links').select('*').eq('token', token).single();
+      if (!error && data) {
+        try {
+          await supabase.from('access_logs').insert([{
+            share_link_id: data.id,
+            user_id: data.user_id,
+            action: 'link_accessed',
+            details: `Doctor accessed records via token`
+          }]);
+        } catch (e) {}
+
+        return res.json({
+          id: data.id,
+          token: data.token,
+          userId: data.user_id,
+          doctorName: data.doctor_name,
+          specialty: 'Consulting Doctor',
+          createdDate: data.created_at,
+          expiresAt: data.expires_at,
+          recordIds: data.record_ids,
+          status: data.is_active ? 'active' : 'revoked'
+        });
+      }
+    }
+  } catch (e) {}
+
   let share = inMemoryShares.find(s => s.token === token);
   if (!share) {
     share = {
@@ -292,6 +482,22 @@ app.get('/api/share/:token', async (req: Request, res: Response) => {
 // API ROUTE: POST /api/share/:id/revoke
 app.post('/api/share/:id/revoke', async (req: Request, res: Response) => {
   const { id } = req.params;
+  try {
+    if (supabase && isUUID(id)) {
+      const { data } = await supabase.from('share_links').update({ is_active: false }).eq('id', id).select();
+      if (data && data.length > 0) {
+        try {
+          await supabase.from('access_logs').insert([{
+            share_link_id: id,
+            user_id: data[0].user_id,
+            action: 'link_revoked',
+            details: 'Share link revoked by user'
+          }]);
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
   const share = inMemoryShares.find(s => s.id === id);
   if (share) {
     share.status = 'revoked';
@@ -329,7 +535,27 @@ app.post('/api/ai/summary', (req: Request, res: Response) => {
 });
 
 // API ROUTE: GET /api/access-logs
-app.get('/api/access-logs', (req: Request, res: Response) => {
+app.get('/api/access-logs', async (req: Request, res: Response) => {
+  const userId = req.query.userId as string;
+  try {
+    if (supabase && userId && isUUID(userId)) {
+      const { data, error } = await supabase
+        .from('access_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return res.json(data.map((l: any) => ({
+          id: l.id,
+          action: l.action,
+          timestamp: l.created_at,
+          details: l.details || '',
+          accessedBy: l.accessed_by_ip || 'Doctor Access Token'
+        })));
+      }
+    }
+  } catch (e) {}
   res.json(inMemoryLogs);
 });
 

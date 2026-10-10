@@ -55,14 +55,16 @@ export const apiService = {
   },
 
   addRecord: async (userId, recordData) => {
-    if (!userId) return null;
+    if (!userId) {
+      throw new Error('User authentication required to save records');
+    }
 
-    // 1. Save immediately to Local Store (Guarantees vault updates immediately!)
-    const savedLocal = mockStore.addRecord(userId, recordData);
+    let savedRecord = null;
+    let saveError = null;
 
-    // 2. Sync to Express Backend
+    // 1. Sync to Express REST Backend
     try {
-      await fetch(`${API_BASE_URL}/records`, {
+      const res = await fetch(`${API_BASE_URL}/records`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,29 +76,82 @@ export const apiService = {
           date: recordData.date,
           description: recordData.description,
           fileName: recordData.fileName,
+          fileUrl: recordData.fileUrl || '',
           fileSize: recordData.fileSize
         })
       });
+
+      if (res.ok) {
+        savedRecord = await res.json();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        saveError = new Error(errJson.error || `Backend server returned ${res.status}`);
+      }
     } catch (e) {
-      console.warn('Backend sync warning:', e);
+      saveError = e;
+      console.warn('Backend server unavailable:', e);
     }
 
-    // 3. Sync to Supabase directly if connected
-    try {
-      await supabase.from('medical_records').insert([{
-        user_id: userId,
-        title: recordData.title,
-        category: recordData.category?.toLowerCase().replace(/\s+/g, '_') || 'other',
-        doctor_hospital: `${recordData.doctor} (${recordData.hospital})`,
-        date: recordData.date,
-        description: recordData.description,
-        file_name: recordData.fileName
-      }]);
-    } catch (e) {
-      // Supabase direct sync error
+    // 2. Direct Supabase Fallback if Backend is down
+    if (!savedRecord) {
+      try {
+        const catMap = (recordData.category || '').toLowerCase();
+        let normalizedCategory = 'other';
+        if (catMap.includes('prescription')) normalizedCategory = 'prescription';
+        else if (catMap.includes('lab')) normalizedCategory = 'lab_report';
+        else if (catMap.includes('diagnos')) normalizedCategory = 'diagnosis';
+        else if (catMap.includes('discharge')) normalizedCategory = 'discharge_summary';
+        else if (catMap.includes('imag')) normalizedCategory = 'imaging';
+        else if (catMap.includes('vaccin')) normalizedCategory = 'vaccination';
+
+        const { data, error } = await supabase.from('medical_records').insert([{
+          user_id: userId,
+          title: recordData.title,
+          category: normalizedCategory,
+          doctor: recordData.doctor || 'Dr. Unspecified',
+          hospital: recordData.hospital || 'Health Center',
+          date: recordData.date || new Date().toISOString().split('T')[0],
+          description: recordData.description || '',
+          file_name: recordData.fileName || 'Document.pdf',
+          file_url: recordData.fileUrl || ''
+        }]).select();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        if (data && data.length > 0) {
+          const row = data[0];
+          savedRecord = {
+            id: row.id,
+            userId: row.user_id,
+            title: row.title,
+            category: row.category,
+            doctor: row.doctor,
+            hospital: row.hospital,
+            date: row.date,
+            description: row.description,
+            fileName: row.file_name,
+            fileUrl: row.file_url,
+            fileType: (row.file_name?.endsWith('.png') || row.file_name?.endsWith('.jpg')) ? 'image' : 'pdf',
+            fileSize: recordData.fileSize || '1.5 MB'
+          };
+          saveError = null;
+        }
+      } catch (directErr) {
+        if (!saveError) saveError = directErr;
+      }
     }
 
-    return savedLocal;
+    // If both backend and direct Supabase failed, throw so the UI never displays false success!
+    if (!savedRecord) {
+      throw saveError || new Error('Failed to save record to database');
+    }
+
+    // 3. Persist to local cache only after true database confirmation
+    mockStore.addRecord(userId, savedRecord);
+
+    return savedRecord;
   },
 
   deleteRecord: async (userId, recordId) => {

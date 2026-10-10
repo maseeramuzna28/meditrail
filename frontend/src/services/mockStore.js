@@ -12,9 +12,9 @@ const DEFAULT_SAMPLE_RECORDS = [
     title: 'Comprehensive Blood Panel & Lipid Profile',
     category: 'Lab Reports',
     doctor: 'Dr. Sarah Jenkins',
-    hospital: 'Apex Health Diagnostics',
+    hospital: 'Apex Health Diagnostics (ABC Hospital)',
     date: '2026-10-08',
-    description: 'Fasting lipid panel, HbA1c (5.6%), CBC, and Vitamin D levels. All parameters within normal range except mild Vitamin D deficiency (22 ng/mL).',
+    description: 'Fasting lipid profile, HbA1c (5.6%), CBC with differential, and Vitamin D levels. All parameters within normal reference ranges except mild Vitamin D deficiency (22 ng/mL).',
     fileType: 'pdf',
     fileName: 'Blood_Panel_Oct2026.pdf',
     fileSize: '1.4 MB'
@@ -30,6 +30,42 @@ const DEFAULT_SAMPLE_RECORDS = [
     fileType: 'prescription',
     fileName: 'Rx_Amlodipine_Sep2026.pdf',
     fileSize: '420 KB'
+  },
+  {
+    id: 'rec-103',
+    title: 'Hospital Visit & Discharge Summary — Gastroenteritis',
+    category: 'Discharge Summaries',
+    doctor: 'Dr. Robert Chen, MD',
+    hospital: 'XYZ Hospital — Acute Care',
+    date: '2026-08-10',
+    description: 'Inpatient observation for acute dehydration secondary to gastroenteritis. IV rehydration completed. Discharged in stable condition with oral rehydration protocol.',
+    fileType: 'pdf',
+    fileName: 'Discharge_Summary_Aug2026.pdf',
+    fileSize: '2.1 MB'
+  },
+  {
+    id: 'rec-104',
+    title: 'Chest Radiograph & Pulmonary Diagnostic Examination',
+    category: 'Diagnoses',
+    doctor: 'Dr. Elena Rostova',
+    hospital: 'Apex Imaging Institute',
+    date: '2026-06-14',
+    description: 'Standard 2-view PA and lateral chest radiograph. Clear bilateral lung fields, normal cardiothoracic ratio, no active pulmonary infiltrates detected.',
+    fileType: 'image',
+    fileName: 'Chest_XRay_PA_Jun2026.jpg',
+    fileSize: '3.8 MB'
+  },
+  {
+    id: 'rec-105',
+    title: 'Adult Immunization & Booster Certificate',
+    category: 'Medical Certificates',
+    doctor: 'Dr. Marcus Vance',
+    hospital: 'Metro Public Health Clinic',
+    date: '2026-04-12',
+    description: 'Official certification for Tdap (Tetanus, Diphtheria, Pertussis) booster and Seasonal Influenza vaccine administration.',
+    fileType: 'pdf',
+    fileName: 'Immunization_Certificate_2026.pdf',
+    fileSize: '650 KB'
   }
 ];
 
