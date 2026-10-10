@@ -18,39 +18,14 @@ import {
 export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Fallback rich structured clinical summary if not supplied
-  const summary = aiSummaryData || {
-    lastUpdated: 'Today at 7:30 PM',
-    conditions: [
-      { name: 'Essential Hypertension (Stage 1)', source: 'Dr. Ahmed Khan (Prescription Sep 2026)', status: 'Managed' },
-      { name: 'Mild Vitamin D Deficiency', source: 'Apex Health Diagnostics (Lab Oct 2026)', status: 'Supplementation Active' },
-      { name: 'Acute Gastroenteritis (Resolved)', source: 'XYZ Hospital Discharge Summary (Aug 2026)', status: 'Resolved' }
-    ],
-    medications: [
-      { name: 'Amlodipine', dosage: '5 mg', frequency: 'Once daily (morning)', purpose: 'Blood pressure control' },
-      { name: 'Cholecalciferol (Vitamin D3)', dosage: '60,000 IU', frequency: 'Weekly for 8 weeks', purpose: 'Vitamin D replenishment' }
-    ],
-    testResults: [
-      { test: 'Fasting Blood Glucose', value: '92 mg/dL', status: 'Normal', range: '70 - 99 mg/dL' },
-      { test: 'HbA1c', value: '5.6%', status: 'Normal', range: '< 5.7%' },
-      { test: 'Serum Vitamin D (25-OH)', value: '22 ng/mL', status: 'Low', range: '30 - 100 ng/mL' },
-      { test: 'Total Cholesterol', value: '188 mg/dL', status: 'Desirable', range: '< 200 mg/dL' },
-      { test: 'Blood Pressure', value: '128 / 82 mmHg', status: 'Prehypertension', range: '< 120/80 mmHg' }
-    ],
-    allergies: [
-      { allergen: 'Penicillin / Amoxicillin', reaction: 'Mild cutaneous rash & urticaria', severity: 'Moderate' },
-      { allergen: 'Sulfa Antibiotics', reaction: 'Reported intolerance during childhood', severity: 'Mild' }
-    ],
-    history: [
-      { event: 'Emergency Room Visit — Dehydration & Gastroenteritis', date: '10 Aug 2026', facility: 'XYZ Hospital' },
-      { event: 'Comprehensive Annual Lipid & Metabolic Screening', date: '08 Oct 2026', facility: 'Apex Diagnostics' },
-      { event: 'Primary Care Consultation for Blood Pressure Check', date: '25 Sep 2026', facility: 'City Medical Center' }
-    ],
-    missingInfo: [
-      'No recent Renal Function Test (Creatinine/eGFR) on record in past 12 months',
-      'Pending follow-up Vitamin D test after 8-week Cholecalciferol course',
-      'No formal vaccination booster record uploaded for Influenza (current season)'
-    ]
+  const summary = {
+    conditions: [],
+    medications: [],
+    testResults: [],
+    allergies: [],
+    history: [],
+    missingInfo: [],
+    ...aiSummaryData
   };
 
   const handleRegenerate = () => {
@@ -73,7 +48,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">AI Health Summary</h1>
           <p className="text-xs text-slate-500">
-            Automated clinical synthesis compiled strictly from your existing uploaded records
+            Demo summary organized from record titles, categories, and descriptions. No AI model is connected.
           </p>
         </div>
 
@@ -95,10 +70,10 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
             Important Medical Notice
           </h4>
           <p className="text-xs text-amber-800/90 leading-relaxed font-medium">
-            "AI-generated information is for informational purposes only and does not replace professional medical advice."
+            "This record summary is for informational purposes only and does not replace professional medical advice."
           </p>
           <p className="text-[11px] text-amber-700">
-            This summary synthesizes only documented observations found in your uploaded records. It does not diagnose medical conditions, predict outcomes, or prescribe medications.
+            This demo organizes uploaded record details. It does not infer diagnoses, interpret test results, or prescribe medications.
           </p>
         </div>
       </div>
@@ -130,6 +105,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 <p className="text-[11px] text-slate-500">{item.source}</p>
               </div>
             ))}
+            {summary.conditions.length === 0 && <p className="text-xs text-slate-500">No diagnosis or discharge records found.</p>}
           </div>
         </div>
 
@@ -156,6 +132,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 <p className="text-[10px] text-indigo-600/80 italic">{med.purpose}</p>
               </div>
             ))}
+            {summary.medications.length === 0 && <p className="text-xs text-slate-500">No prescription records found.</p>}
           </div>
         </div>
 
@@ -188,6 +165,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 </div>
               </div>
             ))}
+            {summary.testResults.length === 0 && <p className="text-xs text-slate-500">No lab reports found.</p>}
           </div>
         </div>
 
@@ -215,6 +193,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 <p className="text-[11px] text-slate-600">{allergy.reaction}</p>
               </div>
             ))}
+            {summary.allergies.length === 0 && <p className="text-xs text-slate-500">No structured allergy records found. Confirm allergies with your healthcare professional.</p>}
           </div>
         </div>
 
@@ -240,6 +219,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 <p className="text-[11px] text-slate-500">{hist.facility}</p>
               </div>
             ))}
+            {summary.history.length === 0 && <p className="text-xs text-slate-500">No medical records available.</p>}
           </div>
         </div>
 
@@ -262,6 +242,7 @@ export default function AISummaryPage({ aiSummaryData, onRegenerate }) {
                 <span>{msg}</span>
               </li>
             ))}
+            {summary.missingInfo.length === 0 && <li className="text-xs text-slate-500">No additional information gaps identified.</li>}
           </ul>
         </div>
 

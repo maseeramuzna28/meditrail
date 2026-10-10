@@ -35,12 +35,15 @@ export default function ShareModal({
   const [selectedIds, setSelectedIds] = useState([]);
 
   useEffect(() => {
-    if (preSelectedRecordIds && preSelectedRecordIds.length > 0) {
-      setSelectedIds(preSelectedRecordIds);
-    } else if (records.length > 0) {
-      // Default: select first 2 records as realistic default
-      setSelectedIds(records.slice(0, 2).map(r => r.id));
-    }
+    const nextSelectedIds = preSelectedRecordIds.length > 0
+      ? preSelectedRecordIds
+      : records.slice(0, 2).map(record => record.id);
+    setSelectedIds(current =>
+      current.length === nextSelectedIds.length &&
+      current.every((id, index) => id === nextSelectedIds[index])
+        ? current
+        : nextSelectedIds
+    );
   }, [preSelectedRecordIds, records, isOpen]);
 
   if (!isOpen) return null;

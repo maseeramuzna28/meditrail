@@ -106,8 +106,9 @@ export const mockStore = {
     const key = `meditrail_records_${userId}`;
     let records = getItem(key, null);
     if (!records) {
-      // First time user registration sample seed
-      records = DEFAULT_SAMPLE_RECORDS.map(r => ({ ...r, userId }));
+      records = userId === 'demo-patient-local'
+        ? DEFAULT_SAMPLE_RECORDS.map(r => ({ ...r, userId }))
+        : [];
       setItem(key, records);
     }
     return records;
@@ -166,7 +167,7 @@ export const mockStore = {
   getShares: (userId) => {
     if (!userId) return [];
     const key = `meditrail_shares_${userId}`;
-    return getItem(key, [
+    return getItem(key, userId === 'demo-patient-local' ? [
       {
         id: 'share-901',
         token: `mt-share-${userId.slice(0, 4)}`,
@@ -179,13 +180,16 @@ export const mockStore = {
         status: 'active',
         accessCount: 1
       }
-    ]);
+    ] : []);
   },
 
   createShare: (userId, { doctorName, specialty, durationHours, selectedRecordIds }) => {
     if (!userId) return null;
     const shares = mockStore.getShares(userId);
-    const token = `mt-share-${Math.random().toString(36).substring(2, 8)}`;
+    const tokenPrefix = userId === 'demo-patient-local'
+      ? 'mt-demo-'
+      : userId.startsWith('local-') ? 'mt-local-' : 'mt-share-';
+    const token = `${tokenPrefix}${Math.random().toString(36).substring(2, 10)}`;
     const expiresAt = new Date(Date.now() + (durationHours || 24) * 3600 * 1000).toISOString();
     
     const newShare = {
@@ -212,6 +216,17 @@ export const mockStore = {
     });
 
     return newShare;
+  },
+
+  saveShare: (userId, share) => {
+    if (!userId) return share;
+    const shares = mockStore.getShares(userId);
+    const updated = [
+      share,
+      ...shares.filter(existing => existing.id !== share.id && existing.token !== share.token)
+    ];
+    setItem(`meditrail_shares_${userId}`, updated);
+    return share;
   },
 
   revokeShare: (userId, shareId) => {
@@ -254,24 +269,14 @@ export const mockStore = {
       }
     }
 
-    // Default fallback
-    return {
-      id: 'share-901',
-      token,
-      doctorName: 'Dr. Ahmed Khan',
-      specialty: 'Cardiology',
-      createdDate: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-      recordIds: ['rec-101', 'rec-102'],
-      status: 'active'
-    };
+    return null;
   },
 
   // Per-User Access Logs
   getLogs: (userId) => {
     if (!userId) return [];
     const key = `meditrail_logs_${userId}`;
-    return getItem(key, [
+    return getItem(key, userId === 'demo-patient-local' ? [
       {
         id: 'log-001',
         timestamp: new Date().toISOString(),
@@ -280,7 +285,7 @@ export const mockStore = {
         details: 'Patient data vault created and encrypted.',
         actor: 'System'
       }
-    ]);
+    ] : []);
   },
 
   addLog: (userId, { type, title, details, actor }) => {
@@ -301,29 +306,41 @@ export const mockStore = {
   // Per-User AI Health Summary
   getAISummary: (userId) => {
     const records = mockStore.getRecords(userId);
+    const recordSource = (record) =>
+      [record.doctor, record.hospital, record.date].filter(Boolean).join(' · ');
+    const recordsInCategory = (...categories) =>
+      records.filter(record => categories.some(category =>
+        (record.category || '').toLowerCase().includes(category)
+      ));
+
     return {
       lastGenerated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       recordCountAnalyzed: records.length,
-      conditions: records.length > 0 ? [
-        { title: 'Essential Hypertension (Stage 1)', detail: 'Diagnosed Sep 2026 by Dr. Ahmed Khan' },
-        { title: 'Mild Vitamin D Deficiency', detail: 'Identified via Oct 2026 blood panel' }
-      ] : [{ title: 'No Diagnosed Conditions Recorded', detail: 'Upload records to generate AI clinical summary.' }],
-      medications: records.length > 0 ? [
-        { name: 'Amlodipine', dosage: '5mg', frequency: 'Once daily in morning', purpose: 'Blood pressure regulation' },
-        { name: 'Cholecalciferol (Vitamin D3)', dosage: '60,000 IU', frequency: 'Weekly for 8 weeks', purpose: 'Vitamin D supplementation' }
-      ] : [],
-      testResults: records.length > 0 ? [
-        { test: 'HbA1c', value: '5.6%', status: 'Normal', date: '08 Oct 2026' }
-      ] : [],
-      allergies: [
-        { allergen: 'Penicillin', severity: 'Moderate', reaction: 'Skin rash reported in 2022' }
-      ],
-      importantHistory: [
-        { year: '2026', event: 'Initiated primary health vault.' }
-      ],
+      conditions: recordsInCategory('diagnos', 'discharge').map(record => ({
+        name: record.title,
+        source: recordSource(record),
+        status: 'See source record'
+      })),
+      medications: recordsInCategory('prescription').map(record => ({
+        name: record.title,
+        dosage: 'See prescription',
+        frequency: 'See source record',
+        purpose: record.description || 'Refer to the original prescription.'
+      })),
+      testResults: recordsInCategory('lab').map(record => ({
+        test: record.title,
+        value: 'See report',
+        status: 'Review source report',
+        range: recordSource(record) || 'See original report'
+      })),
+      allergies: [],
+      history: records.map(record => ({
+        event: record.title,
+        date: record.date || 'Date not provided',
+        facility: record.hospital || record.doctor || 'Facility not provided'
+      })),
       missingInfo: [
-        'Vaccination & Immunization history',
-        'Recent Renal Function Panel'
+        'Allergy information is not structured in these records; confirm it with your healthcare professional.'
       ]
     };
   }

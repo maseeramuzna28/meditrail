@@ -8,9 +8,6 @@ import {
   Activity, 
   Lock, 
   LogOut, 
-  Menu, 
-  X,
-  Stethoscope,
   ChevronDown,
   Upload,
   User,
@@ -25,7 +22,6 @@ export default function Navbar({
   onOpenUpload,
   activeShareCount = 0 
 }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
   const navItems = [
@@ -40,7 +36,6 @@ export default function Navbar({
 
   const handleNavClick = (pageId) => {
     setActivePage(pageId);
-    setMobileMenuOpen(false);
   };
 
   return (
@@ -73,37 +68,6 @@ export default function Navbar({
             </button>
           </div>
 
-          {/* Desktop Navigation Links */}
-          {user?.isLoggedIn && (
-            <nav className="hidden xl:flex items-center gap-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activePage === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleNavClick(item.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all relative ${
-                      isActive 
-                        ? 'bg-teal-50 text-teal-800 border border-teal-200/80 shadow-xs' 
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-teal-700' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
-
-                    {/* Active shares notification badge */}
-                    {item.badge > 0 && (
-                      <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-emerald-500 text-white animate-pulse">
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
             {user?.isLoggedIn ? (
@@ -129,6 +93,9 @@ export default function Navbar({
                       {user.name ? user.name.charAt(0).toUpperCase() : 'P'}
                     </div>
                     <span className="max-w-[100px] truncate font-semibold text-slate-900">{user.name || 'Patient'}</span>
+                    {user.isLocal && (
+                      <span className="text-[9px] font-bold uppercase text-amber-700">Local</span>
+                    )}
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
 
@@ -137,6 +104,9 @@ export default function Navbar({
                       <div className="px-3.5 py-2 border-b border-slate-100">
                         <p className="text-xs font-bold text-slate-900 truncate">{user.name}</p>
                         <p className="text-[11px] font-mono text-slate-500 truncate">{user.email || 'patient@meditrail.org'}</p>
+                        {user.isLocal && (
+                          <p className="text-[10px] text-amber-700">Browser-only account · not cloud-synced</p>
+                        )}
                       </div>
 
                       <button
@@ -194,49 +164,37 @@ export default function Navbar({
               </div>
             )}
 
-            {/* Mobile Hamburger Button */}
-            {user?.isLoggedIn && (
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="xl:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
-              >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-            )}
           </div>
         </div>
-      </div>
-
-      {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && user?.isLoggedIn && (
-        <div className="xl:hidden bg-white border-b border-slate-200 px-4 pt-2 pb-4 space-y-1 shadow-md">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activePage === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between ${
-                  isActive 
-                    ? 'bg-teal-50 text-teal-800 border border-teal-200' 
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-teal-700' : 'text-slate-400'}`} />
+        {user?.isLoggedIn && (
+          <nav aria-label="Main navigation" className="flex gap-1 overflow-x-auto border-t border-slate-100 py-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activePage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                    isActive
+                      ? 'bg-teal-50 text-teal-800 border border-teal-200/80 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-teal-700' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
-                </div>
-                {item.badge > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500 text-white">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+                  {item.badge > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-emerald-500 text-white">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+      </div>
     </header>
   );
 }

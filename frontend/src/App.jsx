@@ -37,8 +37,11 @@ const PROTECTED_PAGES = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState({ isLoggedIn: false, name: 'Guest', email: '', id: null });
-  const [activePage, setActivePage] = useState('landing');
+  const [user, setUser] = useState(() => mockStore.getUser());
+  const [activePage, setActivePage] = useState(() => {
+    if (/^\/doctor\/[^/]+\/?$/.test(window.location.pathname)) return 'doctor-demo';
+    return mockStore.getUser().isLoggedIn ? 'dashboard' : 'landing';
+  });
   const [authErrorAlert, setAuthErrorAlert] = useState('');
   
   // Per-User Data States
@@ -46,7 +49,9 @@ export default function App() {
   const [shares, setShares] = useState([]);
   const [logs, setLogs] = useState([]);
   const [aiSummary, setAiSummary] = useState({});
-  const [doctorToken, setDoctorToken] = useState('');
+  const [doctorToken, setDoctorToken] = useState(() =>
+    window.location.pathname.match(/^\/doctor\/([^/]+)\/?$/)?.[1] || ''
+  );
 
   // Modal States
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -54,7 +59,7 @@ export default function App() {
   const [isQRCodeModalOpen, setIsQRCodeModalOpen] = useState(false);
   const [viewingRecord, setViewingRecord] = useState(null);
   const [activeShareData, setActiveShareData] = useState(null);
-  const [preSelectedShareRecordId, setPreSelectedShareRecordId] = useState(null);
+  const [preSelectedShareRecordIds, setPreSelectedShareRecordIds] = useState([]);
 
   // Sync state helpers scoped to current user
   const loadUserData = async (userId) => {
@@ -78,6 +83,11 @@ export default function App() {
 
   // Sync session with Supabase Auth
   useEffect(() => {
+    if (user.isLocal || user.id === 'demo-patient-local') {
+      loadUserData(user.id);
+      return undefined;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         const currentUser = {
@@ -122,6 +132,7 @@ export default function App() {
   };
 
   const handleLoginSuccess = (userData) => {
+    mockStore.setUser(userData);
     setUser(userData);
     loadUserData(userData.id);
     setAuthErrorAlert('');
@@ -129,7 +140,10 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    mockStore.logout();
+    if (!user.isLocal && user.id !== 'demo-patient-local') {
+      await supabase.auth.signOut();
+    }
     setUser({ isLoggedIn: false, name: 'Guest', email: '', id: null });
     loadUserData(null);
     setActivePage('landing');
@@ -159,6 +173,7 @@ export default function App() {
   const handleCreateShare = async (shareConfig) => {
     if (!user.id) return;
     const newShare = await apiService.createShare(user.id, shareConfig);
+    setIsShareModalOpen(false);
     setActiveShareData(newShare);
     setIsQRCodeModalOpen(true);
     loadUserData(user.id);
@@ -175,12 +190,12 @@ export default function App() {
     setActivePage('doctor-demo');
   };
 
-  const handleOpenShareWithRecord = (recordId) => {
+  const handleOpenShareWithRecord = (recordIds = []) => {
     if (!user.isLoggedIn) {
       navigateTo('login');
       return;
     }
-    setPreSelectedShareRecordId(recordId);
+    setPreSelectedShareRecordIds(Array.isArray(recordIds) ? recordIds : [recordIds]);
     setIsShareModalOpen(true);
   };
 
@@ -193,6 +208,7 @@ export default function App() {
         setActivePage={navigateTo}
         user={user}
         onLogout={handleLogout}
+        onOpenUpload={() => setIsUploadOpen(true)}
         activeShareCount={shares.filter(s => s.status === 'active').length}
       />
 
@@ -250,7 +266,7 @@ export default function App() {
             onViewRecord={(rec) => setViewingRecord(rec)}
             onDeleteRecord={handleDeleteRecord}
             onOpenUpload={() => setIsUploadOpen(true)}
-            onOpenShareBatch={(recordIds) => handleOpenShareWithRecord(recordIds[0])}
+            onOpenShareBatch={handleOpenShareWithRecord}
           />
         )}
 
@@ -258,7 +274,7 @@ export default function App() {
           <TimelinePage
             records={records}
             onViewRecord={(rec) => setViewingRecord(rec)}
-            onShareRecord={(rec) => handleOpenShareWithRecord(rec.id)}
+            onOpenShareModal={handleOpenShareWithRecord}
           />
         )}
 
@@ -293,9 +309,7 @@ export default function App() {
         {activePage === 'doctor-demo' && (
           <DoctorViewPage
             token={doctorToken}
-            getShareByToken={apiService.getShareByToken}
-            allRecords={records}
-            onBackToPatientPortal={() => navigateTo('landing')}
+            onBackToApp={() => navigateTo('landing')}
           />
         )}
 
@@ -328,7 +342,7 @@ export default function App() {
             isOpen={isShareModalOpen}
             onClose={() => setIsShareModalOpen(false)}
             records={records}
-            preSelectedRecordId={preSelectedShareRecordId}
+            preSelectedRecordIds={preSelectedShareRecordIds}
             onCreateShare={handleCreateShare}
           />
 

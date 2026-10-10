@@ -4,6 +4,7 @@
   "private": true,
   "description": "MediTrail HealthTech Platform Monorepo",
   "scripts": {
+    "dev": "npm run dev:frontend",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend dev",
     "build:frontend": "npm --prefix frontend run build",

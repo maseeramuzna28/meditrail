@@ -131,6 +131,24 @@ export default function DoctorViewPage({ token, onBackToApp }) {
     );
   }
 
+  if (!shareData) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 shadow-md text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center mx-auto">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900">Share Link Unavailable</h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              This link is invalid or no longer available. Please ask the patient to create a new share.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const records = shareData?.records || [];
 
   return (

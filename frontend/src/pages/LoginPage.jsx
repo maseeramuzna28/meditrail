@@ -32,10 +32,13 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
     }
   };
 
-  const handleDemoFill = () => {
-    setEmail('patient@meditrail.org');
-    setPassword('demo1234');
+  const handleDemoLogin = async () => {
+    setLoading(true);
     setError('');
+    const result = await authService.login('patient@meditrail.org', 'demo1234');
+    setLoading(false);
+    if (result.user) onLoginSuccess(result.user);
+    else setError(result.error || 'Unable to open the demo vault.');
   };
 
   return (
@@ -51,7 +54,7 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
             Sign In to MediTrail
           </h2>
           <p className="text-xs text-slate-500">
-            Your Medical History. One Secure Trail.
+            Sign in to your cloud account. If unavailable, create a browser-only account instead.
           </p>
         </div>
 
@@ -111,12 +114,16 @@ export default function LoginPage({ onLoginSuccess, setActivePage }) {
         <div className="pt-2 border-t border-slate-100 space-y-2">
           <button
             type="button"
-            onClick={handleDemoFill}
+            onClick={handleDemoLogin}
+            disabled={loading}
             className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
           >
             <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
-            <span>Use Demo Account (One-Click Autofill)</span>
+            <span>Open Local Judge Demo</span>
           </button>
+          <p className="text-center text-[10px] text-slate-500">
+            Sample data stays in this browser and is not synced to the cloud.
+          </p>
           
           <p className="text-center text-xs text-slate-500 pt-1">
             Don't have an account?{' '}

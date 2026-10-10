@@ -5,6 +5,8 @@ import { mockStore } from './mockStore';
 import { supabase } from './supabaseClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const DEMO_USER_ID = 'demo-patient-local';
+const isLocalUser = (userId) => userId === DEMO_USER_ID || userId?.startsWith('local-');
 
 export const apiService = {
   // Medical Records (Guaranteed immediate local visibility + backend/Supabase sync)
@@ -13,6 +15,7 @@ export const apiService = {
     
     // 1. Get locally persisted records for this user (guaranteed instant display)
     const localRecords = mockStore.getRecords(userId) || [];
+    if (isLocalUser(userId)) return localRecords;
 
     // 2. Fetch remote records from Express backend or Supabase
     let remoteRecords = [];
@@ -58,6 +61,7 @@ export const apiService = {
     if (!userId) {
       throw new Error('User authentication required to save records');
     }
+    if (isLocalUser(userId)) return mockStore.addRecord(userId, recordData);
 
     let savedRecord = null;
     let saveError = null;
@@ -159,6 +163,7 @@ export const apiService = {
 
     // 1. Remove from local store immediately
     mockStore.deleteRecord(userId, recordId);
+    if (isLocalUser(userId)) return true;
 
     // 2. Sync deletion to Express Backend
     try {
@@ -186,10 +191,11 @@ export const apiService = {
   createShare: async (userId, shareConfig) => {
     if (!userId) return null;
     const localShare = mockStore.createShare(userId, shareConfig);
+    if (isLocalUser(userId)) return localShare;
 
     // Sync to Express Backend
     try {
-      await fetch(`${API_BASE_URL}/share`, {
+      const res = await fetch(`${API_BASE_URL}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -200,6 +206,14 @@ export const apiService = {
           selectedRecordIds: shareConfig.selectedRecordIds
         })
       });
+      if (res.ok) {
+        const remoteShare = await res.json();
+        return mockStore.saveShare(userId, {
+          ...remoteShare,
+          specialty: shareConfig.specialty || 'General Medicine'
+        });
+      }
+      console.warn('Backend share creation failed:', res.status);
     } catch (e) {
       console.warn('Backend share sync error:', e);
     }
@@ -208,18 +222,36 @@ export const apiService = {
   },
 
   getShareByToken: async (token) => {
+    if (token.startsWith('mt-demo-') || token.startsWith('mt-local-')) {
+      return mockStore.getShareByToken(token);
+    }
+
     // Try Backend API
     try {
-      const res = await fetch(`${API_BASE_URL}/share/${token}`);
+      const res = await fetch(`${API_BASE_URL}/share/${encodeURIComponent(token)}`);
       if (res.ok) return await res.json();
     } catch (e) {}
 
     return mockStore.getShareByToken(token);
   },
 
+  getSharedRecordsByToken: async (token) => {
+    const share = await apiService.getShareByToken(token);
+    if (!share) return null;
+    if (Array.isArray(share.records)) return share;
+
+    const recordIds = Array.isArray(share.recordIds) ? share.recordIds : [];
+    const records = share.userId
+      ? mockStore.getRecords(share.userId).filter(record => recordIds.includes(record.id))
+      : [];
+
+    return { ...share, records };
+  },
+
   revokeShare: async (userId, shareId) => {
     if (!userId) return false;
     mockStore.revokeShare(userId, shareId);
+    if (isLocalUser(userId)) return true;
 
     try {
       await fetch(`${API_BASE_URL}/share/${shareId}/revoke`, { method: 'POST' });

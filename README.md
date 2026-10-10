@@ -79,18 +79,24 @@ Patients usually have medical documents scattered across different hospitals, cl
    cd meditrail
    ```
 
-2. **Install dependencies:**
+2. **Install frontend and backend dependencies:**
    ```bash
-   npm install
+   npm --prefix frontend ci
+   npm --prefix backend ci
    ```
 
-3. **Start local development server:**
+3. **Start the frontend:**
    ```bash
    npm run dev
    ```
    Open your browser at **`http://localhost:3000`**
 
-4. **Verify production build:**
+   To enable backend API features, configure `backend/.env` from `backend/.env.example` and start the backend in a second terminal:
+   ```bash
+   npm run dev:backend
+   ```
+
+4. **Verify production builds:**
    ```bash
    npm run build
    ```

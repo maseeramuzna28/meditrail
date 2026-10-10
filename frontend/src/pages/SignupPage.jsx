@@ -15,17 +15,23 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
       setError('Please fill out all fields.');
       return;
     }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
 
     setLoading(true);
     setError('');
 
     try {
       const res = await authService.signup(name, email, password);
-      if (res && res.user) {
-        onLoginSuccess(res.user);
-      } else {
-        setError(res?.error || 'Failed to create patient account.');
-      }
+      if (res?.error) {
+  setError(res.error);
+} else if (res?.user) {
+  onLoginSuccess(res.user);
+} else {
+  setError('Registration failed. Please try again.');
+}
     } catch (err) {
       setError('Registration error. Please try again.');
     } finally {
@@ -46,7 +52,7 @@ export default function SignupPage({ onLoginSuccess, setActivePage }) {
             Create Patient Account
           </h2>
           <p className="text-xs text-slate-500">
-            Take full control over your personal medical history
+            Browser-only account: your data stays on this device and is not cloud-synced.
           </p>
         </div>
 
